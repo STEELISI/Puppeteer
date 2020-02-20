@@ -1,7 +1,7 @@
 from typing import List
 
-from puppeteer import Action, Observation
-from agenda import Agenda, AgendaState, AgendaPuppeteer, AgendaSnipsTrigger
+from puppeteer import 
+from agenda import Action, Agenda, Observation, Puppeteer, State, Trigger
 
 
 # These two functions are placeholders for logic that produces input to the
@@ -21,7 +21,7 @@ agendas = [Agenda.load("get_location.yaml"),
            Agenda.load("get_full_name.yaml")]
 
 # Make puppeteer based on agendas
-puppeteer = AgendaPuppeteer(agendas)
+puppeteer = Puppeteer(agendas)
 
 # Run puppeteer
 while True:
@@ -36,17 +36,17 @@ while True:
 # loading an agenda from file, but good to have this option as well.
 agenda = Agenda('get_location')
 # Add states
-agenda.add_state(AgendaState('start_state', 'The state we start in.'))
-agenda.add_state(AgendaState('got_specific_loc', 'They gave us a specific enough location we can end.'))
-agenda.add_state(AgendaState('need_more_specifics', 'They gave us a location, but we want them to be more specific'))
-agenda.add_state(AgendaState('push_back', 'They are objecting to telling us.'))
-agenda.add_state(AgendaState('give_up', 'We asked enough - we are going to give up.'))
+agenda.add_state(State('start_state', 'The state we start in.'))
+agenda.add_state(State('got_specific_loc', 'They gave us a specific enough location we can end.'))
+agenda.add_state(State('need_more_specifics', 'They gave us a location, but we want them to be more specific'))
+agenda.add_state(State('push_back', 'They are objecting to telling us.'))
+agenda.add_state(State('give_up', 'We asked enough - we are going to give up.'))
 # Add triggers
 snips_folder = "/home/snips"
-agenda.add_trigger(AgendaSnipsTrigger('push_back_intent', snips_folder))
-agenda.add_trigger(AgendaSnipsTrigger('broad_loc', snips_folder))
-agenda.add_trigger(AgendaSnipsTrigger('specific_loc', snips_folder))
-agenda.add_trigger(AgendaSnipsTrigger('why_intent', snips_folder))
+agenda.add_trigger(Trigger('push_back_intent', snips_folder))
+agenda.add_trigger(Trigger('broad_loc', snips_folder))
+agenda.add_trigger(Trigger('specific_loc', snips_folder))
+agenda.add_trigger(Trigger('why_intent', snips_folder))
 # Add transitions
 agenda.add_transition('start_state', 'why_intent', 'push_back')
 # ...

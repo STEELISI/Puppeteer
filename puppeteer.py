@@ -46,7 +46,7 @@ class Policy(abc.ABC):
         raise NotImplementedError()
 
 
-class Puppeteer:
+class Agent:
     # Main class implementing a puppeteer. Uses a Policy and Belief internally.
     # One object per conversation.
     
