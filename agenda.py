@@ -1,5 +1,5 @@
 import abc
-from typing import Any, List, Map, Tuple
+from typing import Any, List, Mapping, Tuple
 
 import numpy as np
 
@@ -21,6 +21,7 @@ class MessageObservation(Observation):
     def __init__(self, text: str):
         self._text = text
     
+    @property
     def text(self) -> str:
         return self._text
 
@@ -32,7 +33,7 @@ class TriggerDetector(abc.ABC):
     # Corresponds partly to TriggerManage from the v0.1 description.
 
     @abc.abstractmethod
-    def trigger_probabilities(self, observations: List[Observation]) -> Tuple[Map[str, float], float, Map[str, Any]]:
+    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
         raise NotImplementedError()
 
 
@@ -55,7 +56,7 @@ class SnipsTriggerDetector(TriggerDetector):
         else:
             self._engines.append(SnipsManager.engine(path, nlp))
 
-    def trigger_probabilities(self, observations: List[Observation]) -> Tuple[Map[str, float], float, Map[str, Any]]:
+    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
         texts = []
         for observation in observations:
             if isinstance(observation, MessageObservation):
@@ -121,19 +122,22 @@ class Action:
     # of updating the state probabilities and checking how many times an action
     # has been performed).
 
-    def __init__(self, name: str, description: str="", exclusive_flag=True, allowed_repeats=2):
+    def __init__(self, name: str, text: str="", exclusive_flag=True, allowed_repeats=2):
         self._name = name
-        self._description = description
+        self._text = text
         self._exclusive_flag = exclusive_flag
         self._allowed_repeats = allowed_repeats
+    
+    def __str__(self):
+        return "%s: %s" % (self._name, self._text)
     
     @property
     def name(self):
         return self._name
     
     @property
-    def description(self):
-        return self._description
+    def text(self):
+        return self._text
 
     @property
     def exclusive_flag(self):
@@ -153,16 +157,20 @@ class Agenda:
     
     # TODO Setters and getters for all members
 
-    def __init__(self, name: str, belief_manager: AgendaBeliefManager=None, policy: AgendaPolicy=None):
+    # TODO Is there any way to use forward type reference here?
+    # def __init__(self, name: str, belief_manager: AgendaBeliefManager=None, policy: AgendaPolicy=None):
+    def __init__(self, name: str, belief_manager=None, policy=None):
         self._name = name
         if belief_manager is None:
-            self._belief_manager = DefaultAgendaBelief()
+            self._belief_manager = DefaultAgendaBeliefManager(self)
         else:
             self._belief_manager = belief_manager
         if policy is None:
             self._policy = DefaultAgendaPolicy()
         else:
             self._policy = policy
+        # TODO Temporary hack to get access to agenda from po
+        self._policy._agenda = self
         # Setting everything else empty to begin with
         self._states = {}
         self._transition_triggers = {}
@@ -179,10 +187,14 @@ class Agenda:
         self._kickoff_trigger_detectors = []
         self._transition_trigger_detectors = []
 
+    @property
+    def name(self):
+        return self._name
+
     def add_state(self, state: State):
         self._states[state.name] = state
-        self._actions[state.name] = {}
-        self._stall_actions[state.name] = {}
+        self._action_map[state.name] = {}
+        self._stall_action_map[state.name] = {}
         self._transitions[state.name] = {}
 
     def set_start_state(self, state_name: str):
@@ -242,19 +254,19 @@ class AgendaBelief(abc.ABC):
         # Probability that we saw a kickoff trigger in the last observations.
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    @abc.abstractproperty
     def non_kickoff_probability(self):
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def error_state_prob(self):
+    @abc.abstractproperty
+    def error_state_probability(self):
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    @abc.abstractproperty
     def non_event_probability(self):
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    @abc.abstractproperty
     def reset(self):
         raise NotImplementedError()
 
@@ -269,32 +281,35 @@ class DefaultAgendaBelief(AgendaBelief):
         self._non_event_prob = None
         self._kickoff_probability_map = None
         self._non_kickoff_prob = None
-        self._extractions = {}
+        #self._extractions = {}
         self.reset()
     
-    def kickoff_probability(self, agenda_name: str, trigger_name: str):
+    def kickoff_probability(self, trigger_name: str):
         return self._kickoff_probability_map[trigger_name]
 
-    def non_kickoff_probability(self, agenda_name: str):
+    @property
+    def non_kickoff_probability(self):
         return self._non_kickoff_prob
 
-    def error_state_prob(self, agenda_name: str):
+    @property
+    def error_state_probability(self):
         return self._transition_probability_map["ERROR_STATE"]
 
-    def non_event_probability(self, agenda_name: str):
+    @property
+    def non_event_probability(self):
         return self._non_event_prob
     
-    def extraction(self, name: str) -> Any:
-        if name in self._extractions:
-            return self._extractions[name]
-        else:
-            return None
+    # def extraction(self, name: str) -> Any:
+    #     if name in self._extractions:
+    #         return self._extractions[name]
+    #     else:
+    #         return None
 
     def reset(self):
-        self._kickoff_probability_map = {tr.name: 0.0 for tr in self._agenda._kickoff_triggers.keys()}
+        self._kickoff_probability_map = {tr: 0.0 for tr in self._agenda._kickoff_triggers.keys()}
         self._non_kickoff_prob = 1.0
         self._transition_probability_map = {st: 0.0 for st in self._agenda._states.keys()}
-        self._transition_probability_map[self._agenda._start_state] = 1.0
+        self._transition_probability_map[self._agenda._start_state_name] = 1.0
         self._transition_probability_map['ERROR_STATE'] = 0.0
         self._non_even_prob = 0.0
     
@@ -320,21 +335,20 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
 
     def __init__(self, agenda: Agenda):
         self._agenda = agenda
-        self._transition_trigger_detectors = agenda._transition_trigger_detectors.copy()
-        self._kickoff_trigger_detectors = agenda._kickoff_trigger_detectors.copy()
 
     def create_start_belief(self):
         return DefaultAgendaBelief(self._agenda)
 
     def _process_triggers(self, trigger_detectors: List[TriggerDetector],
-                          observations: List[Observation]) -> Tuple[Map[str, float], float, Map[str, Any]]:
+                          observations: List[Observation],
+                          old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
         trigger_map = {}
         non_trigger_probs = []
-        all_extractions = {}
+        new_extractions = {}
         
         for trigger_detector in trigger_detectors:
-            (trigger_map_out, non_trigger_prob, extractions) = trigger_detector.trigger_probabilities(observations)
-            all_extractions.update(extractions)
+            (trigger_map_out, non_trigger_prob, extractions) = trigger_detector.trigger_probabilities(observations, old_extractions)
+            new_extractions.update(extractions)
             non_trigger_probs.append(non_trigger_prob)
             for (trigger_name, p) in trigger_map_out.items():
                 if trigger_name not in trigger_map:
@@ -353,14 +367,16 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         for intent in trigger_map:
             trigger_map[intent] = trigger_map[intent] / sum_total
         
-        return (trigger_map, non_trigger_prob, all_extractions)
+        return (trigger_map, non_trigger_prob, new_extractions)
 
-    def update(self, belief: DefaultAgendaBelief, actions: List[Action], observations: List[Observation]):
+    def update(self, belief: DefaultAgendaBelief, actions: List[Action], observations: List[Observation], old_extractions: Mapping[str, Any]) -> Mapping[str, Any]:
+        new_extractions = {}
+        
         # Handle kickoff triggers.
-        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._kickoff_trigger_detectors)
+        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._agenda._kickoff_trigger_detectors, observations, old_extractions)
 
         # Update kickoff probabilities and extractions
-        belief._extractions.update(extractions)
+        new_extractions.update(extractions)
         belief._kickoff_probability_map = trigger_map
         belief._non_kickoff_prob = non_trigger_prob
 
@@ -368,15 +384,17 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         # skip state probability update.
         # TODO What if actions are shared between agendas?
         if not any([a in self._agenda._actions.values() for a in actions]):
-            return
+            return new_extractions
 
         # Handle transition triggers.
-        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._kickoff_trigger_detectors)
+        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._agenda._transition_trigger_detectors, observations, old_extractions)
 
         # Update state probabilities and extractions
-        belief._extractions.update(extractions)
+        new_extractions.update(extractions)
         belief._non_event_prob = non_trigger_prob
-        belief._probability_map = self._run_transition_probabilities(belief._probability_map, trigger_map, non_trigger_prob)
+        belief._transition_probability_map = self._run_transition_probabilities(belief._transition_probability_map, trigger_map, non_trigger_prob)
+        
+        return new_extractions
 
     def _run_transition_probabilities(self, current_probability_map, trigger_map, non_event_prob):
         # Note: This is essentially copied from puppeteer_base, with updated
@@ -412,7 +430,7 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
                 for event in trigger_map:
                     trans_prob = to_move * trigger_map[event]
                     if event in self._agenda._transitions[st]:
-                        st2 = self._agenda._transitions[event]
+                        st2 = self._agenda._transitions[st][event]
                         new_probability_map[st2] = new_probability_map[st2] + trans_prob   
                         #_LOGGER.debug("Updating %s prob to %.3f" % (st2, new_probability_map[st2]))
                         # Decrease our confidence that we've had some problems following the script, previously.
@@ -478,9 +496,11 @@ class DefaultAgendaPolicy(AgendaPolicy):
         self._min_accept_thresh_w_differential = min_accept_thresh_w_differential
         self._accept_thresh_differential = accept_thresh_differential
         self._kickoff_thresh = kickoff_thresh
+        # TODO Temporary hack to get acces to agenda.
+        self._agenda = None
 
     def made_progress(self, belief: AgendaBelief) -> bool:
-        return belief.non_event_prob <= 0.4 and belief.error_state_prob <= .8
+        return belief.non_event_probability <= 0.4 and belief.error_state_probability <= .8
 
     def is_done(self, belief: AgendaBelief) -> bool:
         best = None
@@ -488,10 +508,10 @@ class DefaultAgendaPolicy(AgendaPolicy):
         # For state by decresing probabilities that we're in that state. 
         # TODO Probably simpler: just look at best and second-best state
         # TODO Don't access probability map directly
-        probability_map = belief._probability_map
+        probability_map = belief._transition_probability_map
         sorted_states = {k: v for k, v in sorted(probability_map.items(), key=lambda item: item[1], reverse=True)}
         for (rank, st) in enumerate(sorted_states):
-            if st in self._terminus: 
+            if st in self._agenda._terminus_names: 
                 # If this is an accept state, we can set our best exit candidate.
                 if rank == 0 and probability_map[st] >= self._absolute_accept_thresh:
                     return True
@@ -504,10 +524,10 @@ class DefaultAgendaPolicy(AgendaPolicy):
         return False
 
     def can_kickoff(self, belief: AgendaBelief) -> bool:
-        return 1.0 - belief.non_kickoff_prob(self._name) >= self._kickoff_thresh
+        return 1.0 - belief.non_kickoff_probability >= self._kickoff_thresh
 
     def pick_actions(self, belief: AgendaBelief, action_history: List[Action], turns_without_progress: int) -> List[Action]:
-        current_probability_map = belief._probability_map
+        current_probability_map = belief._transition_probability_map
         past_action_list = action_history
         
         actions_taken = []
@@ -517,9 +537,9 @@ class DefaultAgendaPolicy(AgendaPolicy):
         #  boolean to indicate if this an exclusive action that cannot be used
         #  with other actions, number of allowed repeats for this action)
         if turns_without_progress == 0:
-            action_map = self._action_map
+            action_map = self._agenda._action_map
         else:
-            action_map = self._stall_action_map
+            action_map = self._agenda._stall_action_map
             
         # Work over the most likely state, to least likely, taking the first
         # actions we are allowed to given repeat allowance & exclusivity.
@@ -528,7 +548,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
         for st in {k: v for k, v in sorted(current_probability_map.items(), key=lambda item: item[1], reverse=True)}:
             # XXX Maybe need to check likeyhood.
             if st in action_map:
-                for action in action_map[st]:
+                for action in action_map[st].values():
                     exclusive_flag = action.exclusive_flag
                     allowed_repeats = action.allowed_repeats
                     
@@ -540,7 +560,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
                             # action is already taken.
                             continue
 
-                        actions_taken.append(action.name)
+                        actions_taken.append(action)
                         if exclusive_flag:
                             # TODO Skip done flag and return here?
                             done = True
@@ -564,9 +584,9 @@ class DefaultPuppeteerPolicyState(abc.ABC):
 
     def __init__(self, agendas: List[Agenda]):
         self._current_agenda = None
-        self._turns_without_progress = {a.name: 0 for a in agendas}
-        self._times_made_current = {a.name: 0 for a in agendas}
-        self._action_history = {a.name: [] for a in agendas}
+        self._turns_without_progress = {a._name: 0 for a in agendas}
+        self._times_made_current = {a._name: 0 for a in agendas}
+        self._action_history = {a._name: [] for a in agendas}
         
     def deactivate_agenda(self, agenda_name: str):
         self._turns_without_progress[agenda_name] = 0
@@ -578,7 +598,7 @@ class PuppeteerPolicyManager(abc.ABC):
     # Corresponds to ConversationOrchestrator from the v0.1 description.
 
     @abc.abstractmethod
-    def act(self, state: PuppeteerPolicyState, beliefs: Map[str, AgendaBelief]) -> List[Action]:
+    def act(self, state: PuppeteerPolicyState, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -595,17 +615,17 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
     def create_start_state(self) -> PuppeteerPolicyState:
         return DefaultPuppeteerPolicyState(self._agendas)
 
-    def act(self, state: PuppeteerPolicyState, beliefs: Map[str, AgendaBelief]) -> List[Action]:
+    def act(self, state: PuppeteerPolicyState, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
         agenda = state._current_agenda
         last_agenda = None
-        
+
         if agenda is not None:
-            belief = beliefs[agenda.name]
+            belief = beliefs[agenda._name]
             
             # Update agenda state based on message.
             # What to handle in output?
-            progress_flag = agenda.made_progress(belief)
-            done_flag = progress_flag and agenda.is_done(belief)
+            progress_flag = agenda.policy.made_progress(belief)
+            done_flag = progress_flag and agenda.policy.is_done(belief)
             if progress_flag:
                 state._turns_without_progress[agenda.name] = 0
             else:
@@ -626,7 +646,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             else:
                 # Run and see if we get some actions.
                 action_history = state._action_history[agenda.name]
-                actions = agenda.pick_actions(belief, action_history, turns_without_progress)
+                actions = agenda.policy.pick_actions(belief, action_history, turns_without_progress)
                 state._action_history[agenda.name].extend(actions)
                 
                 if not done_flag:
@@ -644,7 +664,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
         
         # Try to pick a new agenda.
         for agenda in np.random.permutation(self._agendas):
-            belief = beliefs[agenda.name]
+            belief = beliefs[agenda._name]
             
             if agenda.policy.can_kickoff(belief):
                 # TODO When can the agenda be done already here?
@@ -654,9 +674,9 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             else:
                 kick_off_condition = False
 
-            if agenda == last_agenda or state._times_made_current[agenda.name] > 1:
+            if agenda == last_agenda or state._times_made_current[agenda._name] > 1:
                 # TODO Better to do this before checking for kickoff?
-                state.deactivate_agenda(agenda.name)
+                state.deactivate_agenda(agenda._name)
                 belief.reset()
                 continue
     
@@ -668,20 +688,19 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                 
                 # Do first action.
                 # TODO run_puppeteer() uses [] for the action list, not self._action_history
-                actions = agenda.pick_actions(belief, [], 0)
-                state._action_history[agenda.name].extend(actions)
+                actions = agenda.policy.pick_actions(belief, [], 0)
+                state._action_history[agenda._name].extend(actions)
 
                 # TODO This is the done_flag from kickoff. Should check again now?
                 if done_flag:
-                    state.deactivate_agenda(agenda.name)
+                    state.deactivate_agenda(agenda._name)
                     state._current_agenda = None
                 return actions
             else:
-                state.deactivate_agenda(agenda.name)
+                state.deactivate_agenda(agenda._name)
             
         # We failed to take action with an old agenda
         # and failed to kick off a new agenda. We have nothing.
-        assert not actions
         return []
 
 
@@ -689,22 +708,26 @@ class Puppeteer:
     # Main class for an agendas-based conversation.
     # Corresponds to MachineEngine from the v0.1 description.
 
-    def __init__(self, agendas: List[Agenda], policy: PuppeteerPolicy=None):
+    def __init__(self, agendas: List[Agenda], policy: PuppeteerPolicyManager=None):
         self._agendas = agendas
-        self._beliefs = [a.belief_manager.create_start_belief() for a in agendas]
+        self._beliefs = {a._name: a.belief_manager.create_start_belief() for a in agendas}
         self._last_actions = []
         # TODO We could alternatively use mixins for policies, but changing the
         # policy would require changing the code.
         if policy is None:
-            self._policy = DefaultPuppeteerPolicy(agendas)
+            self._policy = DefaultPuppeteerPolicyManager(agendas)
         else:
             self._policy = policy
+        self._policy_state = self._policy.create_start_state()
         
-    def react(self, observations: List[Observation]) -> List[Action]:
-        for (agenda, belief) in zip(self._agendas, self._beliefs):
-            agenda.belief_manager.update(belief, self._last_actions, observations)
-        self._last_actions = self._policy.act(self._beliefs)
-        return self._last_actions
+    def react(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> List[Action]:
+        new_extractions = {}
+        for agenda in self._agendas:
+            belief = self._beliefs[agenda._name]
+            extractions = agenda.belief_manager.update(belief, self._last_actions, observations, old_extractions)
+            new_extractions.update(extractions)
+        self._last_actions = self._policy.act(self._policy_state, self._beliefs)
+        return (self._last_actions, new_extractions)
 
     def get_conversation_state(self):
         # Used for storing of conversation state

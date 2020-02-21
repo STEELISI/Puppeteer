@@ -1,5 +1,6 @@
 from files import filenames_from_dirname
 from snips_helpers import snips_over_text_body, snips_train_from_txt
+from spacy_helpers import spacy_load
 
 class SpacyManager:
     # Implements lookup to make sure that we only load one copy of each Spacy
@@ -8,10 +9,9 @@ class SpacyManager:
     _nlp = dict()
 
     @classmethod
-    def nlp(cls, model):
+    def nlp(cls, model='en_core_web_lg'):
         if model not in cls._nlp:
-            # TODO
-            pass
+            cls._nlp[model] = spacy_load(model=model)
         return cls._nlp[model]
 
 
@@ -36,7 +36,6 @@ class SnipsManager:
     @classmethod
     def engine(cls, path, nlp):
         if path not in cls._engines:
-            # TODO Load / train the engine.
             filenames = filenames_from_dirname(path)
             snips_engine = snips_train_from_txt(filenames)
             cls._engines[path] = SnipsEngine(snips_engine, nlp)
