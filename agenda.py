@@ -20,10 +20,17 @@ class MessageObservation(Observation):
     
     def __init__(self, text: str):
         self._text = text
+        self._intents = []
     
     @property
     def text(self) -> str:
         return self._text
+    
+    def has_intent(self, intent):
+        return intent in self._intents
+
+    def add_intent(self, intent):
+        return self._intents.append(intent)
 
 
 class TriggerDetector(abc.ABC):
@@ -675,6 +682,8 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                     # without progress.
                     # Do last action if there is one.
                     belief.reset()
+                    state.deactivate_agenda(agenda._name)
+                    state._current_agenda = None
                     agenda = None
                     last_agenda = agenda
         
