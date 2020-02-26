@@ -193,19 +193,14 @@ class TestConversation:
         self._extractions = {"first_name": "Mr", "last_name": "X"}
     
     def say(self, text):
-        msg = MessageObservation(text)
-        (actions, extractions) = self._puppeteer.react([msg], self._extractions)
 
-        # Print results.
         print("-"*40)
         print("You said: %s" % text)
 
-        if actions:
-            print("Actions:")
-            for a in actions:
-                print("   %s" % a)
-        else:
-            print("No actions")
+        msg = MessageObservation(text)
+        (actions, extractions) = self._puppeteer.react([msg], self._extractions)
+
+        print("-"*40)
 
         if extractions:
             print("Extractions:")
@@ -222,11 +217,31 @@ class TestConversation:
             for (state_name, p) in tpm.items():
                 print("        %s: %.3f" % (state_name, p))
         
+        if actions:
+            print("Actions:")
+            for a in actions:
+                print("    %s" % a)
+        else:
+            print("No actions")
+
         return (actions, extractions)
 
 if __name__ == "__main__":
     tc = TestConversation()
     tc.say("Hello")
-    tc.say("I live in Chicago")
-    tc.say("I live in Chicago")
-    tc.say("Very nice, thank you!")
+    #tc.say("None of your business")
+    tc.say("Why?")
+    tc.say("Nice weather today")
+    #tc.say("I live in Chicago")
+
+
+    # tc.say("I live in Chicago")
+    # tc.say("Very nice, thank you!")
+
+
+
+"Hello"
+"None of your business"
+"No way"
+"I live in Chicago"
+

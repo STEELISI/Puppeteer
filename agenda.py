@@ -340,6 +340,7 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         return DefaultAgendaBelief(self._agenda)
 
     def _process_triggers(self, trigger_detectors: List[TriggerDetector],
+                          expected_trigger_names: List[str],
                           observations: List[Observation],
                           old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
         trigger_map = {}
@@ -348,16 +349,24 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         
         for trigger_detector in trigger_detectors:
             (trigger_map_out, non_trigger_prob, extractions) = trigger_detector.trigger_probabilities(observations, old_extractions)
+            print("Got trigger map out:", trigger_map_out)
             new_extractions.update(extractions)
             non_trigger_probs.append(non_trigger_prob)
             for (trigger_name, p) in trigger_map_out.items():
-                if trigger_name not in trigger_map:
-                    trigger_map[trigger_name] = p
-                elif trigger_map[trigger_name] < p:
-                    trigger_map[trigger_name] = p
+                if trigger_name in expected_trigger_names:
+                    if trigger_name not in trigger_map:
+                        trigger_map[trigger_name] = p
+                    elif trigger_map[trigger_name] < p:
+                        trigger_map[trigger_name] = p
 
-        if non_trigger_probs:
-            non_trigger_prob = min(non_trigger_probs)
+        #if non_trigger_probs:
+        #    non_trigger_prob = min(non_trigger_probs)
+        #else:
+        #    non_trigger_prob = 1.0
+
+        # TODO Is this consistent with Turducken's definition of non_event_prob?
+        if trigger_map:
+            non_trigger_prob = 1.0 - max(trigger_map.values())
         else:
             non_trigger_prob = 1.0
         
@@ -366,6 +375,10 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         non_trigger_prob = non_trigger_prob / sum_total
         for intent in trigger_map:
             trigger_map[intent] = trigger_map[intent] / sum_total
+
+        print("Final trigger map:", trigger_map)
+        print("Non trigger prob:", non_trigger_prob)
+
         
         return (trigger_map, non_trigger_prob, new_extractions)
 
@@ -373,7 +386,7 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         new_extractions = {}
         
         # Handle kickoff triggers.
-        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._agenda._kickoff_trigger_detectors, observations, old_extractions)
+        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._agenda._kickoff_trigger_detectors, self._agenda._kickoff_triggers.keys(), observations, old_extractions)
 
         # Update kickoff probabilities and extractions
         new_extractions.update(extractions)
@@ -387,7 +400,7 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
             return new_extractions
 
         # Handle transition triggers.
-        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._agenda._transition_trigger_detectors, observations, old_extractions)
+        (trigger_map, non_trigger_prob, extractions) = self._process_triggers(self._agenda._transition_trigger_detectors, self._agenda._transition_triggers.keys(), observations, old_extractions)
 
         # Update state probabilities and extractions
         new_extractions.update(extractions)
@@ -448,6 +461,8 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         
         #for state in new_probability_map:
         #    _LOGGER.info("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
+        for state in new_probability_map:
+            print("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
         return new_probability_map
 
 
@@ -618,6 +633,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
     def act(self, state: PuppeteerPolicyState, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
         agenda = state._current_agenda
         last_agenda = None
+        actions = []
 
         if agenda is not None:
             belief = beliefs[agenda._name]
@@ -688,8 +704,9 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                 
                 # Do first action.
                 # TODO run_puppeteer() uses [] for the action list, not self._action_history
-                actions = agenda.policy.pick_actions(belief, [], 0)
-                state._action_history[agenda._name].extend(actions)
+                new_actions = agenda.policy.pick_actions(belief, [], 0)
+                actions.extend(new_actions)
+                state._action_history[agenda._name].extend(new_actions)
 
                 # TODO This is the done_flag from kickoff. Should check again now?
                 if done_flag:
@@ -701,7 +718,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             
         # We failed to take action with an old agenda
         # and failed to kick off a new agenda. We have nothing.
-        return []
+        return actions
 
 
 class Puppeteer:
