@@ -2,29 +2,19 @@ import string
 from typing import Any, List, Mapping, Tuple
 
 from agenda import (
-    Agenda, Action, DefaultAgendaPolicy, MessageObservation, Observation,
-    Puppeteer, SnipsTriggerDetector, State, Trigger, TriggerDetector
+    Agenda, Action, DefaultAgendaPolicy,
+    Puppeteer, State, Trigger
 )
+from observation import MessageObservation, Observation
+from trigger_detector import TriggerDetector, SnipsTriggerDetector
 from ents import nent_extraction
-from nlu import SpacyManager
+from nlu import SpacyLoader
 from spacy_helpers import spacy_get_sentences
 
 
-class MakePaymentKickoffTriggerDetector(TriggerDetector):
-
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
-        # Kickoff if we have payment intent in the observations
-        for observation in observations:
-            if isinstance(observation, MessageObservation):            
-                if observation.has_intent("payment"):
-                    # Kickoff condition seen
-                    return ({"kickoff": 1.0}, 0.0, {})
-                else:
-                    # No kickoff
-                    return ({}, 1.0, {})
 
 
-def make_puppeteer():
+def create_agenda():
     policy = DefaultAgendaPolicy(reuse=False,
                      max_transitions=5,
                      absolute_accept_thresh=0.6,
@@ -95,73 +85,19 @@ def make_puppeteer():
 
     agenda.add_stall_action_for_state(Action('promise_payment', 'Thanks!  I\'ll send along payment shortly', True, 1), 'gave_acct_info')
     
-    nlp = SpacyManager.nlp()
+    nlp = SpacyLoader.nlp()
     
-    d = SnipsTriggerDetector("../turducken/data/training/puppeteer/make_payment", nlp, multi_engine=False)
+    paths = ["../turducken/data/training/puppeteer/make_payment/provide_acct",
+             "../turducken/data/training/puppeteer/make_payment/req_bank",
+             "../turducken/data/training/puppeteer/make_payment/req_card",
+             "../turducken/data/training/puppeteer/make_payment/req_online",
+             ]
+    d = SnipsTriggerDetector(paths, nlp, multi_engine=False)
     agenda.add_transition_trigger_detector(d)
     
     d = MakePaymentKickoffTriggerDetector()
     agenda.add_kickoff_trigger_detector(d)
     
-    return Puppeteer([agenda])
+    return agenda
 
 
-class TestConversation:
-    def __init__(self):
-        self._puppeteer = make_puppeteer()
-        self._extractions = {"first_name": "Mr", "last_name": "X"}
-    
-    def say(self, text):
-
-        print("-"*40)
-        print("You said: %s" % text)
-
-        msg = MessageObservation(text)
-        msg.add_intent("payment")
-        (actions, extractions) = self._puppeteer.react([msg], self._extractions)
-
-        print("-"*40)
-
-        if extractions:
-            print("Extractions:")
-            for (key, value) in extractions.items():
-                print("    %s: %s" % (key, value))
-        else:
-            print("No extractions")
-
-        if self._puppeteer._policy_state._current_agenda is None:
-            print("No current agenda")
-        else:
-            print("Current agenda: %s" % self._puppeteer._policy_state._current_agenda.name)
-
-        print("Agenda state probabilities")
-        for (agenda_name, belief) in self._puppeteer._beliefs.items():
-            # TODO Hacky access to state probabilities.
-            tpm = belief._transition_probability_map
-            print("    %s:" % agenda_name)
-            for (state_name, p) in tpm.items():
-                print("        %s: %.3f" % (state_name, p))
-        
-        if actions:
-            print("Actions:")
-            for a in actions:
-                print("    %s" % a)
-        else:
-            print("No actions")
-
-        return (actions, extractions)
-
-if __name__ == "__main__":
-    tc = TestConversation()
-    tc.say("Hello")
-    tc.say("Why?")
-    tc.say("routing number: 8998 account number: 12321312321")
-
-
-
-# "Hello"
-# "None of your business"
-# "No way"
-# "I live in Chicago"
-
-# "routing number: 8998 account number: 12321312321"

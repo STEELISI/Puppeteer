@@ -2,90 +2,10 @@ import abc
 from typing import Any, List, Mapping, Tuple
 
 import numpy as np
+import yaml
 
-from files import dirnames_from_dirname
-from nlu import SnipsManager
-
-
-class Observation(abc.ABC):
-    # Abstract base class for all types of observations used by the Puppeteer
-    # to update its beliefs.
-    # Corresponds to InputManager from the v0.1 description.
-    pass
-
-
-class MessageObservation(Observation):
-    # An Observation class implementing a message that has been received. Can
-    # subclass this for more specific message types with more specific information.
-    
-    def __init__(self, text: str):
-        self._text = text
-        self._intents = []
-    
-    @property
-    def text(self) -> str:
-        return self._text
-    
-    def has_intent(self, intent):
-        return intent in self._intents
-
-    def add_intent(self, intent):
-        return self._intents.append(intent)
-
-
-class TriggerDetector(abc.ABC):
-    # A trigger detector can take observations and return probabilities that
-    # its triggers are "seen" in the observation. A trigger detector has a set
-    # of triggers it is looking for.
-    # Corresponds partly to TriggerManage from the v0.1 description.
-
-    @abc.abstractmethod
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
-        raise NotImplementedError()
-
-
-class SnipsTriggerDetector(TriggerDetector):
-    # A trigger detector using one or more Snips engines to detect triggers in
-    # observations.
-
-    def __init__(self, path: str, nlp, multi_engine=False):
-        # path: Path to the root of the training data. 
-        self._engines = []
-        self._trigger_names = None
-
-       # TODO Is there a Snips convention for how to do store its training data?
-
-       # Create our Snips engine or engines.
-        if multi_engine:
-            dirs = dirnames_from_dirname(path)
-            for dir in dirs:
-                self._engines.append(SnipsManager.engine(dir, nlp))
-        else:
-            self._engines.append(SnipsManager.engine(path, nlp))
-
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
-        texts = []
-        for observation in observations:
-            if isinstance(observation, MessageObservation):
-                texts.append(observation.text)
-        text = "\n".join(texts)
-
-        trigger_map = {}
-        for engine in self._engines:
-            snips_results = engine.detect(text)
-                        
-            for intent, p, sen in snips_results:
-                if 'NOT' not in intent:
-                    trigger_name = intent + '_intent'
-                    if intent + '_intent' not in trigger_map:
-                        trigger_map[trigger_name] = p
-                    elif trigger_map[trigger_name] < p:
-                        trigger_map[trigger_name] = p
-        if trigger_map:
-            non_event_prob = 1.0 - max(trigger_map.values())
-        else:
-            non_event_prob = 1.0
-        return (trigger_map, non_event_prob, {})
+from observation import Observation
+from trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
 class State:
@@ -104,6 +24,13 @@ class State:
     def description(self):
         return self._description
 
+    def _to_dict(self):
+        return {"name": self._name, "description": self._description}
+
+    @classmethod
+    def _from_dict(cls, d):
+        return cls(d["name"], d["description"])
+
 
 class Trigger:
     # Class naming and describing a trigger in an agenda.
@@ -119,6 +46,13 @@ class Trigger:
     @property
     def description(self):
         return self._description
+
+    def _to_dict(self):
+        return {"name": self._name, "description": self._description}
+
+    @classmethod
+    def _from_dict(cls, d):
+        return cls(d["name"], d["description"])
 
 
 class Action:
@@ -154,6 +88,13 @@ class Action:
     def allowed_repeats(self):
         return self._allowed_repeats
 
+    def _to_dict(self):
+        return {"name": self._name, "text": self._text, "exclusive_flag": self._exclusive_flag, "allowed_repeats": self._allowed_repeats}
+
+    @classmethod
+    def _from_dict(cls, d):
+        return cls(d["name"], d["text"], d["exclusive_flag"], d["allowed_repeats"])
+
 
 class Agenda:
     # Class defining all properties of an agenda, but not keeping track of the
@@ -176,7 +117,7 @@ class Agenda:
             self._policy = DefaultAgendaPolicy()
         else:
             self._policy = policy
-        # TODO Temporary hack to get access to agenda from po
+        # TODO Temporary hack to get access to agenda from policy
         self._policy._agenda = self
         # Setting everything else empty to begin with
         self._states = {}
@@ -194,14 +135,56 @@ class Agenda:
         self._kickoff_trigger_detectors = []
         self._transition_trigger_detectors = []
 
+    def _to_dict(self) -> Mapping[str, Any]:
+        def to_dict(x):
+            if isinstance(x, str):
+                return x
+            elif isinstance(x, int):
+                return x
+            elif isinstance(x, float):
+                return x
+            elif isinstance(x, list):
+                return [to_dict(v) for v in x]
+            elif isinstance(x, dict):
+                return {k: to_dict(v) for (k, v) in x.items()}
+            else:
+                return x._to_dict()
+        field_names = ["_name", "_states", "_transition_triggers",
+                       "_kickoff_triggers", "_transitions", "_start_state_name",
+                       "_terminus_names", "_actions", "_action_map",
+                       "_stall_action_map", "_policy"]
+        d = {f[1:]: to_dict(getattr(self, f)) for f in field_names}
+        # TODO Anytihng from belief manager?
+        return d
+
+    @classmethod
+    def _from_dict(cls, d: Mapping[str, Any]) -> type:
+        obj = cls(d["name"])
+        # Restore all fields, as stored in dict
+        for (name, value) in d.items():
+            setattr(obj, "_" + name, value)
+        # Replace with objects, where appropriate.
+        for (name, state) in obj._states.items():
+            obj._states[name] = State._from_dict(state)
+        for (name, trigger) in obj._transition_triggers.items():
+            obj._transition_triggers[name] = Trigger._from_dict(trigger)
+        for (name, trigger) in obj._kickoff_triggers.items():
+            obj._kickoff_triggers[name] = Trigger._from_dict(trigger)
+        for (name, action) in obj._actions.items():
+            obj._actions[name] = Action._from_dict(action)
+        # TODO Add policy_class parameter to this method.
+        obj._policy = DefaultAgendaPolicy._from_dict(obj._policy)
+        obj._policy._agenda = obj
+        return obj
+
     @property
     def name(self):
         return self._name
 
     def add_state(self, state: State):
         self._states[state.name] = state
-        self._action_map[state.name] = {}
-        self._stall_action_map[state.name] = {}
+        self._action_map[state.name] = []
+        self._stall_action_map[state.name] = []
         self._transitions[state.name] = {}
 
     def set_start_state(self, state_name: str):
@@ -220,12 +203,12 @@ class Agenda:
         self._transitions[start_state_name][trigger_name] = end_state_name
     
     def add_action_for_state(self, action: Action, state_name: str):
-        self._action_map[state_name][action.name] = action
         self._actions[action.name] = action
+        self._action_map[state_name].append(action.name)
     
     def add_stall_action_for_state(self, action: Action, state_name: str):
-        self._stall_action_map[state_name][action.name] = action
         self._actions[action.name] = action
+        self._stall_action_map[state_name].append(action.name)
 
     def add_transition_trigger_detector(self, trigger_detector: TriggerDetector):
         self._transition_trigger_detectors.append(trigger_detector)
@@ -233,8 +216,30 @@ class Agenda:
     def add_kickoff_trigger_detector(self, trigger_detector: TriggerDetector):
         self._kickoff_trigger_detectors.append(trigger_detector)
 
-    def load(self, file):
-        raise NotImplementedError()
+    def store(self, filename: str):
+        with open(filename, "w") as file:
+            yaml.dump(self._to_dict(), file, default_flow_style=False)
+
+    @classmethod
+    def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
+             snips_multi_engine: bool=False) -> type:
+        with open(filename, "r") as file:
+            d = yaml.load(file)
+        agenda = cls._from_dict(d)
+        # Load trigger detectors
+        # Transition triggers
+        trigger_names = list(agenda._transition_triggers.keys())
+        detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
+        print(trigger_names, detectors)
+        for detector in detectors:
+            agenda.add_transition_trigger_detector(detector)
+        # Kickoff triggers
+        trigger_names = list(agenda._kickoff_triggers.keys())
+        detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
+        print(trigger_names, detectors)
+        for detector in detectors:
+            agenda.add_kickoff_trigger_detector(detector)
+        return agenda
         
     @property
     def policy(self):
@@ -400,10 +405,11 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         belief._kickoff_probability_map = trigger_map
         belief._non_kickoff_prob = non_trigger_prob
 
-        # Check if any of the actions taken "belong" to this agenda. If not,
-        # skip state probability update.
+        # Check if the last of the actions taken "belong" to this agenda. Earlier
+        # actions may be the finishing actions of a deactivated agenda.
         # TODO What if actions are shared between agendas?
-        if not any([a in self._agenda._actions.values() for a in actions]):
+        #if not any([a in self._agenda._actions.values() for a in actions]):
+        if actions and not actions[-1] in self._agenda._actions.values():
             return new_extractions
 
         # Handle transition triggers.
@@ -494,6 +500,14 @@ class AgendaPolicy(abc.ABC):
     def pick_actions(self, belief: AgendaBelief, action_history: List[Action], turns_without_progress: int) -> List[Action]:
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def _to_dict(self) -> Mapping[str, Any]:
+        raise NotImplementedError()
+        
+    @abc.abstractclassmethod
+    def _from_dict(cls, d: Mapping[str, Any]) -> type:
+        raise NotImplementedError()
+        
         
 class DefaultAgendaPolicy(AgendaPolicy):
     # Default implementaiton of AgendaPolicy, absed on turducken's implementation.
@@ -520,6 +534,22 @@ class DefaultAgendaPolicy(AgendaPolicy):
         self._kickoff_thresh = kickoff_thresh
         # TODO Temporary hack to get acces to agenda.
         self._agenda = None
+
+
+    def _to_dict(self) -> Mapping[str, Any]:
+        field_names = ["_reuse", "_max_transitions", "_absolute_accept_thresh",
+                       "_min_accept_thresh_w_differential",
+                       "_accept_thresh_differential", "_kickoff_thresh"]
+        d = {f[1:]: getattr(self, f) for f in field_names}
+        return d
+    
+    @classmethod
+    def _from_dict(cls, d: Mapping[str, Any]) -> type:
+        return cls(d["reuse"], d["max_transitions"],
+                   d["absolute_accept_thresh"],
+                   d["min_accept_thresh_w_differential"],
+                   d["accept_thresh_differential"],
+                   d["kickoff_thresh"])
 
     def made_progress(self, belief: AgendaBelief) -> bool:
         return belief.non_event_probability <= 0.4 and belief.error_state_probability <= .8
@@ -570,7 +600,8 @@ class DefaultAgendaPolicy(AgendaPolicy):
         for st in {k: v for k, v in sorted(current_probability_map.items(), key=lambda item: item[1], reverse=True)}:
             # XXX Maybe need to check likeyhood.
             if st in action_map:
-                for action in action_map[st].values():
+                for action_name in action_map[st]:
+                    action = self._agenda._actions[action_name]
                     exclusive_flag = action.exclusive_flag
                     allowed_repeats = action.allowed_repeats
                     
@@ -611,8 +642,12 @@ class DefaultPuppeteerPolicyState(abc.ABC):
         self._action_history = {a._name: [] for a in agendas}
         
     def deactivate_agenda(self, agenda_name: str):
-        self._turns_without_progress[agenda_name] = 0
-        self._action_history[agenda_name] = []
+        # TODO Turducken currently keeps the history when an agenda is
+        # deactivated. Can lead to avoiding states with few actions when an
+        # agenda is re-run.
+        #self._turns_without_progress[agenda_name] = 0
+        #self._action_history[agenda_name] = []
+        pass
 
 
 class PuppeteerPolicyManager(abc.ABC):
@@ -664,8 +699,6 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                 belief.reset()
                 state.deactivate_agenda(agenda.name)
                 state._current_agenda = None
-                # TODO Do we want to exit here, or choose a new agenda?
-                return []
             else:
                 # Run and see if we get some actions.
                 action_history = state._action_history[agenda.name]
