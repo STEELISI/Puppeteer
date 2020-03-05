@@ -149,14 +149,15 @@ class Agenda:
                 return {k: to_dict(v) for (k, v) in x.items()}
             else:
                 return x._to_dict()
-        field_names = ["_name",
-                       "_transitions", "_start_state_name",
-                       "_terminus_names", "_action_map",
-                       "_stall_action_map", "_policy"]
-        d = {f[1:]: to_dict(getattr(self, f)) for f in field_names}
+        d = {"name": self._name}
         # Handle named fields separately
         field_names = ["_states", "_actions", "_transition_triggers", "_kickoff_triggers"]
-        d.update({f[1:]: to_dict(getattr(self, f).values()) for f in field_names})
+        d.update({f[1:]: to_dict(list(getattr(self, f).values())) for f in field_names})
+        # Other fields stored as-is
+        field_names = ["_start_state_name", "_terminus_names", 
+                       "_transitions", "_action_map",
+                       "_stall_action_map", "_policy"]
+        d.update({f[1:]: to_dict(getattr(self, f)) for f in field_names})
         # TODO Anytihng from belief manager?
         return d
 
