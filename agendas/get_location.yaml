@@ -10,50 +10,41 @@ action_map:
   start_state:
   - question
 actions:
-  ask_specifics:
-    allowed_repeats: 2
-    exclusive_flag: true
-    name: ask_specifics
-    text: "Where specifically are you?"
-  done:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: done
-    text: "I hope you like it there!"
-  push_1:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: push_1
-    text: "Just trying to relate on some things. Where are you based out of?"
-  push_2:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: push_2
-    text: "I'm not asking for super personal info. Just asking what city you're out of..."
-  push_3:
-    allowed_repeats: 3
-    exclusive_flag: true
-    name: push_3
-    text: "You haven't told me where you are located yet?"
-  push_4:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: push_4
-    text: "Okay, but it would be nice to note in my file."
-  push_5:
-    allowed_repeats: 2
-    exclusive_flag: true
-    name: push_5
-    text: "So I forgot, where are you based out of?"
-  question:
-    allowed_repeats: 3
-    exclusive_flag: true
-    name: question
-    text: "What location are you based out of?"
+- allowed_repeats: 2
+  exclusive_flag: true
+  name: ask_specifics
+  text: "Where specifically are you?"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: done
+  text: "I hope you like it there!"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: push_1
+  text: "Just trying to relate on some things. Where are you based out of?"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: push_2
+  text: "I'm not asking for super personal info. Just asking what city you're out of..."
+- allowed_repeats: 3
+  exclusive_flag: true
+  name: push_3
+  text: "You haven't told me where you are located yet?"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: push_4
+  text: "Okay, but it would be nice to note in my file."
+- allowed_repeats: 2
+  exclusive_flag: true
+  name: push_5
+  text: "So I forgot, where are you based out of?"
+- allowed_repeats: 3
+  exclusive_flag: true
+  name: question
+  text: "What location are you based out of?"
 kickoff_triggers:
-  city_in_extractions:
-    description: ''
-    name: city_in_extractions
+- description: ''
+  name: city_in_extractions
 name: get_location
 policy:
   absolute_accept_thresh: 0.6
@@ -74,37 +65,28 @@ stall_action_map:
   - push_3
 start_state_name: start_state
 states:
-  give_up:
-    description: "We asked enough - we are going to give up."
-    name: give_up
-  got_specific_loc:
-    description: "They gave us a specific enough location we can end."
-    name: got_specific_loc
-  need_more_specifics:
-    description: "They gave us a location, but we want them to be more specific"
-    name: need_more_specifics
-  push_back:
-    description: "They are objecting to telling us."
-    name: push_back
-  start_state:
-    description: "The state we start in."
-    name: start_state
+- description: "We asked enough - we are going to give up."
+  name: give_up
+- description: "They gave us a specific enough location we can end."
+  name: got_specific_loc
+- description: "They gave us a location, but we want them to be more specific"
+  name: need_more_specifics
+- description: "They are objecting to telling us."
+  name: push_back
+- description: "The state we start in."
+  name: start_state
 terminus_names:
 - got_specific_loc
 - give_up
 transition_triggers:
-  broad_loc:
-    description: ''
-    name: broad_loc
-  push_back:
-    description: ''
-    name: push_back
-  specific_loc:
-    description: ''
-    name: specific_loc
-  why:
-    description: ''
-    name: why
+- description: ''
+  name: broad_loc
+- description: ''
+  name: push_back
+- description: ''
+  name: specific_loc
+- description: ''
+  name: why
 transitions:
   give_up: {}
   got_specific_loc: {}

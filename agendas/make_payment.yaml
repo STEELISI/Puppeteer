@@ -14,90 +14,73 @@ action_map:
   - ask_for_bank_acct_b
   - ask_for_bank_acct_c
 actions:
-  ask_for_bank_acct_a:
-    allowed_repeats: 2
-    exclusive_flag: true
-    name: ask_for_bank_acct_a
-    text: "I can send you the money.  What is your routing and bank account number?"
-  ask_for_bank_acct_b:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: ask_for_bank_acct_b
-    text: "I always prefer to pay by electronic check, so I need your account numbers for that"
-  ask_for_bank_acct_c:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: ask_for_bank_acct_c
-    text: "If you give me your routing and account numbers would make it really easy for me to send the payment"
-  ask_for_bank_acct_d:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: ask_for_bank_acct_d
-    text: "A lot of people don't use electronic checks, but I promise it's easier"
-  ask_for_bank_acct_e:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: ask_for_bank_acct_e
-    text: "I pretty much only use e-check on the internet. Sorry"
-  deflect_acct_info_a:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_acct_info_a
-    text: "You don't need my bank info.  I'll just send you an electronic check."
-  deflect_acct_info_b:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_acct_info_b
-    text: "I only need to know your number to send the money.  It's actually pretty straightforward"
-  deflect_credit_debit_a:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_credit_debit_a
-    text: "OK, this might sound weird weird, but I don't use credit.  It's just a ploy by the lenders to trap you in debt"
-  deflect_credit_debit_b:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_credit_debit_b
-    text: "When I pay a bill, I either use cash, check, or e-check"
-  deflect_credit_debit_c:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_credit_debit_c
-    text: "I don't actually use any cards anymore.  It makes spending too easy."
-  deflect_credit_debit_d:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_credit_debit_d
-    text: "So I actually got into credit card trouble a few years ago, and Im working through it now.  Part of that was shredding the cards and using the envelope system"
-  deflect_credit_debit_e:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_credit_debit_e
-    text: "Credit cards (and debit cards) are just a trap to make spending easier.  Some people do ok with that, but most people don't, so I got them out of my life.  It has made saving up money SO much easier"
-  deflect_payment_service_a:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_payment_service_a
-    text: "I don't know how to use that."
-  deflect_payment_service_b:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_payment_service_b
-    text: "Like, I read that those services get hacked all the time.  I can't give them my bank info"
-  deflect_payment_service_c:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: deflect_payment_service_c
-    text: "I just don't trust those guys.  Sorry.  Can't we just do e-check?"
-  promise_payment:
-    allowed_repeats: 1
-    exclusive_flag: true
-    name: promise_payment
-    text: "Thanks!  I'll send along payment shortly"
+- allowed_repeats: 2
+  exclusive_flag: true
+  name: ask_for_bank_acct_a
+  text: "I can send you the money.  What is your routing and bank account number?"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: ask_for_bank_acct_b
+  text: "I always prefer to pay by electronic check, so I need your account numbers for that"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: ask_for_bank_acct_c
+  text: "If you give me your routing and account numbers would make it really easy for me to send the payment"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: ask_for_bank_acct_d
+  text: "A lot of people don't use electronic checks, but I promise it's easier"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: ask_for_bank_acct_e
+  text: "I pretty much only use e-check on the internet. Sorry"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_acct_info_a
+  text: "You don't need my bank info.  I'll just send you an electronic check."
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_acct_info_b
+  text: "I only need to know your number to send the money.  It's actually pretty straightforward"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_credit_debit_a
+  text: "OK, this might sound weird weird, but I don't use credit.  It's just a ploy by the lenders to trap you in debt"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_credit_debit_b
+  text: "When I pay a bill, I either use cash, check, or e-check"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_credit_debit_c
+  text: "I don't actually use any cards anymore.  It makes spending too easy."
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_credit_debit_d
+  text: "So I actually got into credit card trouble a few years ago, and Im working through it now.  Part of that was shredding the cards and using the envelope system"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_credit_debit_e
+  text: "Credit cards (and debit cards) are just a trap to make spending easier.  Some people do ok with that, but most people don't, so I got them out of my life.  It has made saving up money SO much easier"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_payment_service_a
+  text: "I don't know how to use that."
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_payment_service_b
+  text: "Like, I read that those services get hacked all the time.  I can't give them my bank info"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: deflect_payment_service_c
+  text: "I just don't trust those guys.  Sorry.  Can't we just do e-check?"
+- allowed_repeats: 1
+  exclusive_flag: true
+  name: promise_payment
+  text: "Thanks!  I'll send along payment shortly"
 kickoff_triggers:
-  payment:
-    description: ''
-    name: payment
+- description: ''
+  name: payment
 name: make_payment
 policy:
   absolute_accept_thresh: 0.6
@@ -122,36 +105,27 @@ stall_action_map:
   - ask_for_bank_acct_e
 start_state_name: start_state
 states:
-  gave_acct_info:
-    description: "They provided the bank account info that we asked for"
-    name: gave_acct_info
-  requested_acct_info:
-    description: "They requested our own bank account information"
-    name: requested_acct_info
-  requested_credit_debit:
-    description: "They requested our credit/debit card information"
-    name: requested_credit_debit
-  requested_payment_service:
-    description: "They requested a payment service such as paypal or venmo"
-    name: requested_payment_service
-  start_state:
-    description: "The state we start in."
-    name: start_state
+- description: "They provided the bank account info that we asked for"
+  name: gave_acct_info
+- description: "They requested our own bank account information"
+  name: requested_acct_info
+- description: "They requested our credit/debit card information"
+  name: requested_credit_debit
+- description: "They requested a payment service such as paypal or venmo"
+  name: requested_payment_service
+- description: "The state we start in."
+  name: start_state
 terminus_names:
 - gave_acct_info
 transition_triggers:
-  provide_acct:
-    description: ''
-    name: provide_acct
-  req_bank:
-    description: ''
-    name: req_bank
-  req_card:
-    description: ''
-    name: req_card
-  req_online:
-    description: ''
-    name: req_online
+- description: ''
+  name: provide_acct
+- description: ''
+  name: req_bank
+- description: ''
+  name: req_card
+- description: ''
+  name: req_online
 transitions:
   gave_acct_info: {}
   requested_acct_info:

@@ -149,11 +149,14 @@ class Agenda:
                 return {k: to_dict(v) for (k, v) in x.items()}
             else:
                 return x._to_dict()
-        field_names = ["_name", "_states", "_transition_triggers",
-                       "_kickoff_triggers", "_transitions", "_start_state_name",
-                       "_terminus_names", "_actions", "_action_map",
+        field_names = ["_name",
+                       "_transitions", "_start_state_name",
+                       "_terminus_names", "_action_map",
                        "_stall_action_map", "_policy"]
         d = {f[1:]: to_dict(getattr(self, f)) for f in field_names}
+        # Handle named fields separately
+        field_names = ["_states", "_actions", "_transition_triggers", "_kickoff_triggers"]
+        d.update({f[1:]: to_dict(getattr(self, f).values()) for f in field_names})
         # TODO Anytihng from belief manager?
         return d
 
@@ -164,14 +167,16 @@ class Agenda:
         for (name, value) in d.items():
             setattr(obj, "_" + name, value)
         # Replace with objects, where appropriate.
-        for (name, state) in obj._states.items():
-            obj._states[name] = State._from_dict(state)
-        for (name, trigger) in obj._transition_triggers.items():
-            obj._transition_triggers[name] = Trigger._from_dict(trigger)
-        for (name, trigger) in obj._kickoff_triggers.items():
-            obj._kickoff_triggers[name] = Trigger._from_dict(trigger)
-        for (name, action) in obj._actions.items():
-            obj._actions[name] = Action._from_dict(action)
+        def convert(dict_list, cls):
+            obj_dict = {}
+            for d in dict_list:
+                obj = cls._from_dict(d)
+                obj_dict[obj.name] = obj
+            return obj_dict
+        obj._states = convert(obj._states, State)
+        obj._kickoff_triggers = convert(obj._kickoff_triggers, Trigger)
+        obj._transition_triggers = convert(obj._transition_triggers, Trigger)
+        obj._actions = convert(obj._actions, Action)
         # TODO Add policy_class parameter to this method.
         obj._policy = DefaultAgendaPolicy._from_dict(obj._policy)
         obj._policy._agenda = obj
@@ -218,7 +223,7 @@ class Agenda:
 
     def store(self, filename: str):
         with open(filename, "w") as file:
-            yaml.dump(self._to_dict(), file, default_flow_style=False)
+            yaml.dump(self._to_dict(), file, default_flow_style=False, sort_keys=False)
 
     @classmethod
     def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
