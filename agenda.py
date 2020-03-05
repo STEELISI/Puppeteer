@@ -630,24 +630,26 @@ class DefaultAgendaPolicy(AgendaPolicy):
         return actions_taken
 
 
-class PuppeteerPolicyState(abc.ABC):
-    # Class holding the conversation-specific state of a policy manager.
-    # Corresponds to ConversationStateManager from the v0.1 description, for the
-    # policy state part of the conversation. Load / store to be implemented.
-    pass
+class PuppeteerPolicyManager(abc.ABC):
+    # A puppeteer policy is responsible for selecting the agenda to run.
+    # Corresponds to ConversationOrchestrator from the v0.1 description.
 
+    @abc.abstractmethod
+    def act(self, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
+        raise NotImplementedError()
 
-class DefaultPuppeteerPolicyState(abc.ABC):
-    # Class holding the conversation-specific state of a policy manager, using
-    # the default implementation from turducken.
-
+class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
+    # Essentially the same policy as run_puppeteer().
+    
     def __init__(self, agendas: List[Agenda]):
+        self._agendas = agendas
+        # State
         self._current_agenda = None
         self._turns_without_progress = {a._name: 0 for a in agendas}
         self._times_made_current = {a._name: 0 for a in agendas}
         self._action_history = {a._name: [] for a in agendas}
         
-    def deactivate_agenda(self, agenda_name: str):
+    def _deactivate_agenda(self, agenda_name: str):
         # TODO Turducken currently keeps the history when an agenda is
         # deactivated. Can lead to avoiding states with few actions when an
         # agenda is re-run.
@@ -655,31 +657,8 @@ class DefaultPuppeteerPolicyState(abc.ABC):
         #self._action_history[agenda_name] = []
         pass
 
-
-class PuppeteerPolicyManager(abc.ABC):
-    # A puppeteer policy is responsible for selecting the agenda tp run.
-    # Corresponds to ConversationOrchestrator from the v0.1 description.
-
-    @abc.abstractmethod
-    def act(self, state: PuppeteerPolicyState, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def create_start_state(self) -> PuppeteerPolicyState:
-        raise NotImplementedError()
-        
-        
-class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
-    # Essentially the same policy as run_puppeteer().
-    
-    def __init__(self, agendas: List[Agenda]):
-        self._agendas = agendas
-        
-    def create_start_state(self) -> PuppeteerPolicyState:
-        return DefaultPuppeteerPolicyState(self._agendas)
-
-    def act(self, state: PuppeteerPolicyState, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
-        agenda = state._current_agenda
+    def act(self, beliefs: Mapping[str, AgendaBelief]) -> List[Action]:
+        agenda = self._current_agenda
         last_agenda = None
         actions = []
 
@@ -691,25 +670,25 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             progress_flag = agenda.policy.made_progress(belief)
             done_flag = progress_flag and agenda.policy.is_done(belief)
             if progress_flag:
-                state._turns_without_progress[agenda.name] = 0
+                self._turns_without_progress[agenda.name] = 0
             else:
                 # At this point, the current agenda (if there is
                 # one) was the one responsible for our previous
                 # reply in this convo. Only this agenda has its
                 # turns_without_progress counter incremented.
-                state._turns_without_progress[agenda.name] += 1
+                self._turns_without_progress[agenda.name] += 1
                 
-            turns_without_progress = state._turns_without_progress[agenda.name]
+            turns_without_progress = self._turns_without_progress[agenda.name]
             
             if turns_without_progress >= 2:
                 belief.reset()
-                state.deactivate_agenda(agenda.name)
-                state._current_agenda = None
+                self._deactivate_agenda(agenda.name)
+                self._current_agenda = None
             else:
                 # Run and see if we get some actions.
-                action_history = state._action_history[agenda.name]
+                action_history = self._action_history[agenda.name]
                 actions = agenda.policy.pick_actions(belief, action_history, turns_without_progress)
-                state._action_history[agenda.name].extend(actions)
+                self._action_history[agenda.name].extend(actions)
                 
                 if not done_flag:
                     # Keep going with this agenda.
@@ -721,8 +700,8 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                     # without progress.
                     # Do last action if there is one.
                     belief.reset()
-                    state.deactivate_agenda(agenda._name)
-                    state._current_agenda = None
+                    self._deactivate_agenda(agenda._name)
+                    self._current_agenda = None
                     agenda = None
                     last_agenda = agenda
         
@@ -738,9 +717,9 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             else:
                 kick_off_condition = False
 
-            if agenda == last_agenda or state._times_made_current[agenda._name] > 1:
+            if agenda == last_agenda or self._times_made_current[agenda._name] > 1:
                 # TODO Better to do this before checking for kickoff?
-                state.deactivate_agenda(agenda._name)
+                self._deactivate_agenda(agenda._name)
                 belief.reset()
                 continue
     
@@ -748,21 +727,21 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             if kick_off_condition:
                 # Successfully kicked this off.
                 # Make this our current agenda.           
-                state._current_agenda = agenda
+                self._current_agenda = agenda
                 
                 # Do first action.
                 # TODO run_puppeteer() uses [] for the action list, not self._action_history
                 new_actions = agenda.policy.pick_actions(belief, [], 0)
                 actions.extend(new_actions)
-                state._action_history[agenda._name].extend(new_actions)
+                self._action_history[agenda._name].extend(new_actions)
 
                 # TODO This is the done_flag from kickoff. Should check again now?
                 if done_flag:
-                    state.deactivate_agenda(agenda._name)
-                    state._current_agenda = None
+                    self._deactivate_agenda(agenda._name)
+                    self._current_agenda = None
                 return actions
             else:
-                state.deactivate_agenda(agenda._name)
+                self._deactivate_agenda(agenda._name)
             
         # We failed to take action with an old agenda
         # and failed to kick off a new agenda. We have nothing.
@@ -783,7 +762,6 @@ class Puppeteer:
             self._policy = DefaultPuppeteerPolicyManager(agendas)
         else:
             self._policy = policy
-        self._policy_state = self._policy.create_start_state()
         
     def react(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> List[Action]:
         new_extractions = {}
@@ -791,7 +769,7 @@ class Puppeteer:
             belief = self._beliefs[agenda._name]
             extractions = agenda.belief_manager.update(belief, self._last_actions, observations, old_extractions)
             new_extractions.update(extractions)
-        self._last_actions = self._policy.act(self._policy_state, self._beliefs)
+        self._last_actions = self._policy.act(self._beliefs)
         return (self._last_actions, new_extractions)
 
     def get_conversation_state(self):

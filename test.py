@@ -36,10 +36,10 @@ class TestConversation:
         else:
             print("No extractions")
 
-        if self._puppeteer._policy_state._current_agenda is None:
+        if self._puppeteer._policy._current_agenda is None:
             print("No current agenda")
         else:
-            print("Current agenda: %s" % self._puppeteer._policy_state._current_agenda.name)
+            print("Current agenda: %s" % self._puppeteer._policy._current_agenda.name)
 
         print("Agenda state probabilities")
         for (agenda_name, belief) in self._puppeteer._beliefs.items():
@@ -82,6 +82,8 @@ if __name__ == "__main__":
     #tc.say("I live in Chicago")
 
 
+# get_location.store("get_location.yaml")
+# make_payment.store("make_payment.yaml")
 
 # "Hello"
 # "None of your business"
