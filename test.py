@@ -3,6 +3,7 @@ from typing import List
 import numpy as np
 
 from agenda import Agenda, Puppeteer
+from extractions import Extractions
 from observation import MessageObservation
 from trigger_detectors.loader import MyTriggerDetectorLoader
 
@@ -14,7 +15,9 @@ class TestConversation:
     def __init__(self, agendas: List[Agenda]):
         
         self._puppeteer = Puppeteer(agendas)
-        self._extractions = {"first_name": "Mr", "last_name": "X"}
+        self._extractions = Extractions()
+        self._extractions.add_extraction("first_name", "Mr")
+        self._extractions.add_extraction("last_name", "X")
         np.random.seed(0)
 
     
@@ -29,9 +32,9 @@ class TestConversation:
 
         print("-"*40)
 
-        if extractions:
+        if extractions._extractions:
             print("Extractions:")
-            for (key, value) in extractions.items():
+            for (key, value) in extractions._extractions.items():
                 print("    %s: %s" % (key, value))
         else:
             print("No extractions")
@@ -42,9 +45,9 @@ class TestConversation:
             print("Current agenda: %s" % self._puppeteer._policy._current_agenda.name)
 
         print("Agenda state probabilities")
-        for (agenda_name, belief) in self._puppeteer._beliefs.items():
+        for (agenda_name, agenda_states) in self._puppeteer._agenda_states.items():
             # TODO Hacky access to state probabilities.
-            tpm = belief._transition_probability_map
+            tpm = agenda_states._state_probabilities._probabilities
             print("    %s:" % agenda_name)
             for (state_name, p) in tpm.items():
                 print("        %s: %.3f" % (state_name, p))

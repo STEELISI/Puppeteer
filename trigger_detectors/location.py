@@ -2,6 +2,7 @@ import string
 from typing import Any, List, Mapping, Tuple
 
 from ents import nent_extraction
+from extractions import Extractions
 from observation import Observation, MessageObservation
 from spacy_helpers import spacy_get_sentences
 from trigger_detector import SnipsTriggerDetector, TriggerDetector
@@ -18,7 +19,7 @@ class LocationInMessageTriggerDetector(SnipsTriggerDetector):
     def trigger_names(self) -> List[str]:
         return ["broad_loc", "specific_loc"]
     
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
+    def trigger_probabilities(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
         """
         Function to determine if we have a location, and if it's specific.
         
@@ -37,7 +38,7 @@ class LocationInMessageTriggerDetector(SnipsTriggerDetector):
         locs_list = dict_of_ents['locs']
  
         trigger_map = {}
-        extractions = {}
+        extractions = Extractions()
 
         # See if we got a statement about being _from_ somewhere or living
         # somewhere using our custom snips engine.
@@ -81,7 +82,7 @@ class LocationInMessageTriggerDetector(SnipsTriggerDetector):
                     is_specific = True
                     break
             if is_specific:
-                extractions["city"] = loc
+                extractions.add_extraction("city", loc)
                 break
             else:
                 #_LOGGER.info("Got broad location of %s", loc)
@@ -118,17 +119,17 @@ class CityInExtractionsTriggerDetector(TriggerDetector):
   def trigger_names(self) -> List[str]:
       return [self._trigger_name]
     
-  def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
+  def trigger_probabilities(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
     # Kickoff if we have a name but not the city of the person.
     
     # If we already have a location, skip starting this.
     # TODO Assuming that this covers all attribution sources.
-    if "city" in old_extractions:
-      return ({}, 1.0, {})
+    if old_extractions.has_extraction("city"):
+      return ({}, 1.0, Extractions())
       
     # If we don't have a name to go with this convo, skip.
-    if (not "first_name" in old_extractions) or (not "last_name" in old_extractions):
-      return ({}, 1.0, {})
+    if not (old_extractions.has_extraction("first_name") and old_extractions.has_extraction("last_name")):
+      return ({}, 1.0, Extractions())
 
     # Kickoff condition seen
-    return ({self._trigger_name: 1.0}, 0.0, {})
+    return ({self._trigger_name: 1.0}, 0.0, Extractions())

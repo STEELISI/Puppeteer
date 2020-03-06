@@ -2,6 +2,7 @@ import abc
 import os
 from typing import Any, List, Mapping, Tuple
 
+from extractions import Extractions
 from nlu import SnipsLoader, SpacyLoader
 from observation import Observation, MessageObservation
 
@@ -21,7 +22,8 @@ class TriggerDetector(abc.ABC):
         pass
         
     @abc.abstractmethod
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
+    # TODO Use TriggerProbabilities as output?
+    def trigger_probabilities(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
         raise NotImplementedError()
 
 
@@ -52,7 +54,7 @@ class SnipsTriggerDetector(TriggerDetector):
     def trigger_names(self) -> List[str]:
         return self._trigger_names
 
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Mapping[str, Any]) -> Tuple[Mapping[str, float], float, Mapping[str, Any]]:
+    def trigger_probabilities(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
         texts = []
         for observation in observations:
             if isinstance(observation, MessageObservation):
@@ -76,7 +78,7 @@ class SnipsTriggerDetector(TriggerDetector):
             non_event_prob = 1.0 - max(trigger_map.values())
         else:
             non_event_prob = 1.0
-        return (trigger_map, non_event_prob, {})
+        return (trigger_map, non_event_prob, Extractions())
 
 
 class TriggerDetectorLoader:
