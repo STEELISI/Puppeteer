@@ -1,6 +1,8 @@
 import abc
 from typing import Any, List, Mapping, Tuple
 
+import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import yaml
 
@@ -103,6 +105,7 @@ class AgendaState:
         self._transition_trigger_probabilities = agenda._trigger_probabilities_cls(agenda, kickoff=False)
         self._kickoff_trigger_probabilities = agenda._trigger_probabilities_cls(agenda, kickoff=True)
         self._state_probabilities = agenda._state_probabilities_cls(agenda)
+        self._pos = None
 
     @property
     def transition_trigger_probabilities(self):
@@ -134,6 +137,42 @@ class AgendaState:
 
     def reset(self):
         self._state_probabilities.reset()
+
+    def _plot_state(self, fig):
+        
+        g = nx.MultiDiGraph()
+        
+        # Add states
+        for s in self._agenda._states:
+            g.add_node(s)
+        g.add_node('ERROR_STATE')
+        
+        for s0 in self._agenda._states:
+            # Add transitions
+            for s1 in self._agenda._transitions[s0].values():
+                g.add_edge(s0, s1)
+        
+        # Color nodes according to probability map.
+        color_transition = ['#fff0e6','#ffe0cc','#ffd1b3','#ffc299','#ffb380','#ffa366','#ff944d','#ff8533','#ff751a','#ff6600']
+        color_map = []
+        labels = {}
+        for node in g:
+            prob = self._state_probabilities._probabilities[node]
+            labels[node] = "%s\np=%.2f" % (node, prob)
+            prob = int(round(prob * 10))
+            if prob > 0:
+                prob = prob - 1
+            #print("Current probability for %s is %.2f"% (node, prob))
+            if prob < len(color_transition):
+                color_map.append(color_transition[prob])
+            else:
+                color_map.append('grey')
+        
+        # Draw
+        plt.figure(fig.number)
+        if self._pos == None:
+            self._pos = nx.circular_layout(g)
+        nx.draw(g, pos=self._pos, node_color=color_map, labels=labels)    
 
 
 class TriggerProbabilities(abc.ABC):
@@ -831,6 +870,10 @@ class PuppeteerPolicyManager(abc.ABC):
     def act(self, agenda_states: Mapping[str, AgendaState]) -> List[Action]:
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def _plot_state(self, fig):
+        raise NotImplementedError()
+
 class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
     # Essentially the same policy as run_puppeteer().
     
@@ -901,6 +944,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                     last_agenda = agenda
         
         # Try to pick a new agenda.
+        print("Looking for new agenda")
         for agenda in np.random.permutation(self._agendas):
             agenda_state = agenda_states[agenda.name]
             
@@ -942,16 +986,39 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
         # and failed to kick off a new agenda. We have nothing.
         return actions
 
+    def _plot_state(self, fig, agenda_states):
+        plt.figure(fig.number)
+        plt.clf()
+        if self._current_agenda is None:
+            plt.title("No current agenda")
+        else:
+            agenda_name = self._current_agenda.name
+            turns_without_progress = self._turns_without_progress[agenda_name]
+            times_made_current = self._times_made_current[agenda_name]
+            action_history = self._action_history[agenda_name]
+            title = "Current agenda: %s\n" % agenda_name
+            title += "    %d turns without progress\n" % turns_without_progress
+            title += "    made current %d times\n" % times_made_current
+            title += "    action history: %s" % [a.name for a in action_history]
+            plt.title(title)
+            agenda_state = agenda_states[self._current_agenda.name]
+            agenda_state._plot_state(fig)
+
 
 class Puppeteer:
     # Main class for an agendas-based conversation.
     # Corresponds to MachineEngine from the v0.1 description.
 
-    def __init__(self, agendas: List[Agenda], policy_cls=DefaultPuppeteerPolicyManager):
+    def __init__(self, agendas: List[Agenda], policy_cls=DefaultPuppeteerPolicyManager, plot_state=False):
         self._agendas = agendas
         self._agenda_states = {a.name: AgendaState(a) for a in agendas}
         self._last_actions = []
         self._policy = policy_cls(agendas)
+        if plot_state:
+            self._fig = plt.figure()
+            self._policy._plot_state(self._fig, self._agenda_states)
+        else:
+            self._fig = None
         
     def react(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[List[Action], Extractions]:
         new_extractions = Extractions()
@@ -959,6 +1026,8 @@ class Puppeteer:
             extractions = agenda_state._update(self._last_actions, observations, old_extractions)
             new_extractions.update(extractions)
         self._last_actions = self._policy.act(self._agenda_states)
+        if self._fig is not None:
+            self._policy._plot_state(self._fig, self._agenda_states)
         return (self._last_actions, new_extractions)
 
     def get_conversation_state(self):

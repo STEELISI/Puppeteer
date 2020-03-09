@@ -14,7 +14,7 @@ from trigger_detectors.loader import MyTriggerDetectorLoader
 class TestConversation:
     def __init__(self, agendas: List[Agenda]):
         
-        self._puppeteer = Puppeteer(agendas)
+        self._puppeteer = Puppeteer(agendas, plot_state=True)
         self._extractions = Extractions()
         self._extractions.add_extraction("first_name", "Mr")
         self._extractions.add_extraction("last_name", "X")
