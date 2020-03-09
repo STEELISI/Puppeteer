@@ -59,6 +59,9 @@ class TestConversation:
         else:
             print("No actions")
 
+        #print("Puppeteer policy")
+        #print("tmc", self._puppeteer._policy._times_made_current)
+        #print("twop", self._puppeteer._policy._turns_without_progress)
         return (actions, extractions)
 
 

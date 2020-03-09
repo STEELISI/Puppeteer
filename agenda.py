@@ -121,7 +121,7 @@ class AgendaState:
 
     def _update(self, actions: List[Action], observations: List[Observation], old_extractions: Extractions) -> Extractions:
         
-        print("Updating based on", observations[0].text, len(observations))
+        #print("Updating based on", observations[0].text, len(observations))
         
         new_extractions = Extractions()
 
@@ -204,8 +204,8 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
         
         for trigger_detector in self.trigger_detectors:
             (trigger_map_out, non_trigger_prob, extractions) = trigger_detector.trigger_probabilities(observations, old_extractions)
-            print("Got trigger map out:", trigger_map_out)
-            print("    from", trigger_detector)
+            #print("Got trigger map out:", trigger_map_out)
+            #print("    from", trigger_detector)
             new_extractions.update(extractions)
             non_trigger_probs.append(non_trigger_prob)
             for (trigger_name, p) in trigger_map_out.items():
@@ -227,8 +227,8 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
         for intent in trigger_map:
             trigger_map[intent] = trigger_map[intent] / sum_total
 
-        print("Final trigger map:", trigger_map)
-        print("Non trigger prob:", non_trigger_prob)
+        #print("Final trigger map:", trigger_map)
+        #print("Non trigger prob:", non_trigger_prob)
 
         for t in self._probabilities.keys():
             if t in trigger_map:
@@ -320,8 +320,8 @@ class DefaultStateProbabilities(StateProbabilities):
         
         #for state in new_probability_map:
         #    _LOGGER.info("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
-        for state in new_probability_map:
-            print("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
+        #for state in new_probability_map:
+        #    print("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
         
         self._probabilities = new_probability_map
 
@@ -444,7 +444,7 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         
         for trigger_detector in trigger_detectors:
             (trigger_map_out, non_trigger_prob, extractions) = trigger_detector.trigger_probabilities(observations, old_extractions)
-            print("Got trigger map out:", trigger_map_out)
+            #print("Got trigger map out:", trigger_map_out)
             new_extractions.update(extractions)
             non_trigger_probs.append(non_trigger_prob)
             for (trigger_name, p) in trigger_map_out.items():
@@ -471,8 +471,8 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         for intent in trigger_map:
             trigger_map[intent] = trigger_map[intent] / sum_total
 
-        print("Final trigger map:", trigger_map)
-        print("Non trigger prob:", non_trigger_prob)
+        #print("Final trigger map:", trigger_map)
+        #print("Non trigger prob:", non_trigger_prob)
 
         
         return (trigger_map, non_trigger_prob, new_extractions)
@@ -557,8 +557,8 @@ class DefaultAgendaBeliefManager(AgendaBeliefManager):
         
         #for state in new_probability_map:
         #    _LOGGER.info("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
-        for state in new_probability_map:
-            print("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
+        #for state in new_probability_map:
+        #    print("Prob at end for %s: %.2f" % (state, new_probability_map[state]))
         return new_probability_map
 
 
@@ -846,13 +846,13 @@ class Agenda:
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
         detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
-        print(trigger_names, detectors)
+        #print(trigger_names, detectors)
         for detector in detectors:
             agenda.add_transition_trigger_detector(detector)
         # Kickoff triggers
         trigger_names = list(agenda._kickoff_triggers.keys())
         detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
-        print(trigger_names, detectors)
+        #print(trigger_names, detectors)
         for detector in detectors:
             agenda.add_kickoff_trigger_detector(detector)
         return agenda
@@ -914,7 +914,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                 # turns_without_progress counter incremented.
                 self._turns_without_progress[agenda.name] += 1
 
-            print("Made progress for", agenda.name, progress_flag, self._turns_without_progress[agenda.name])
+            #print("Made progress for", agenda.name, progress_flag, self._turns_without_progress[agenda.name])
                 
             turns_without_progress = self._turns_without_progress[agenda.name]
             
@@ -922,6 +922,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                 agenda_state.reset()
                 self._deactivate_agenda(agenda.name)
                 self._current_agenda = None
+                last_agenda = agenda
             else:
                 # Run and see if we get some actions.
                 action_history = self._action_history[agenda.name]
@@ -940,12 +941,15 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                     agenda_state.reset()
                     self._deactivate_agenda(agenda._name)
                     self._current_agenda = None
-                    agenda = None
                     last_agenda = agenda
+                    agenda = None
+                    #print("Done with agenda!")
         
         # Try to pick a new agenda.
-        print("Looking for new agenda")
+        #print("Looking for new agenda")
         for agenda in np.random.permutation(self._agendas):
+            #print("Trying to kick off agenda %s" % agenda.name)
+            #print(agenda, last_agenda)
             agenda_state = agenda_states[agenda.name]
             
             if agenda.policy.can_kickoff(agenda_state):
@@ -964,6 +968,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
     
             # IF we kicked off, make this our active agenda, do actions and return.
             if kick_off_condition:
+                #print("Kicking off agenda!")
                 # Successfully kicked this off.
                 # Make this our current agenda.           
                 self._current_agenda = agenda
@@ -1003,6 +1008,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
             plt.title(title)
             agenda_state = agenda_states[self._current_agenda.name]
             agenda_state._plot_state(fig)
+        plt.show()
 
 
 class Puppeteer:
