@@ -4,20 +4,19 @@ from os.path import basename, join
 
 from snips_nlu import SnipsNLUEngine # type: ignore
 from snips_nlu.default_configs import CONFIG_EN # type: ignore
+import spacy
 
-from spacy_helpers import generate_data_chunks, spacy_get_sentences, spacy_load
 
 class SpacyEngine:
     def __init__(self, model: str) -> None:
-        self._nlp = spacy_load(model=model)
+        self._nlp = spacy.load(model)
 
     def get_sentences(self, text: str):
         sens = []
-        for chunk in generate_data_chunks(text):
-            sens.extend(spacy_get_sentences(chunk, nlp=self._nlp))
+        for chunk in self._generate_data_chunks(text):
+            sens.extend([s.text for s in self._nlp(chunk).sents])
         return sens
 
-    # TODO Only actually using locs? Only used by first trigger detector.
     def nent_extraction(self, text):
         orgs = []
         # Like orgs, but religeous, political and nationality groups
@@ -47,7 +46,7 @@ class SpacyEngine:
         }
     
         # Spacy can choke on large data, so chunk if we have to.
-        for chunk in generate_data_chunks(text):
+        for chunk in self._generate_data_chunks(text):
             doc = self._nlp(chunk)
             for ent in doc.ents:
                 #print(ent.text)
@@ -58,6 +57,30 @@ class SpacyEngine:
                     l.append(ent.text)
     
         return {'orgs':orgs, 'norgs':norgs, 'locs':locs, 'people':people, 'products':products, 'money':money_amounts, 'events':events, 'quants':quants}
+
+    @staticmethod
+    def _generate_data_chunks(data, chunk_size=2000, boundry_chars=['.','!','?','=','*']):
+        # Spacy can croak on large data.
+        sindex = 0
+        eindex = chunk_size
+        while(sindex < len(data)):
+            if eindex < len(data):
+                if eindex < len(data):
+                    move_up_start = eindex
+                    while(eindex < len(data) and not data[eindex] in boundry_chars and eindex < move_up_start + 200):
+                        eindex = eindex + 1
+                    if eindex < len(data)-2:
+                        if data[eindex] in boundry_chars:
+                            eindex = eindex + 1
+                if eindex < len(data):
+                    d = data[sindex:eindex]
+                else:
+                    d = data[sindex:]
+            else:
+                d = data[sindex:]
+            sindex = eindex
+            eindex = sindex + chunk_size
+            yield d
 
 
 class SpacyLoader:
@@ -70,7 +93,6 @@ class SpacyLoader:
     def nlp(cls, model='en_core_web_lg'):
         if model not in cls._nlp:
             cls._nlp[model] = SpacyEngine(model)
-            #cls._nlp[model] = spacy_load(model=model)
         return cls._nlp[model]
 
 
