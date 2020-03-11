@@ -1,6 +1,7 @@
-import os
+from os import walk
+from os.path import basename, join
 
-from files import filenames_from_dirname
+
 from snips_helpers import snips_over_text_body, snips_train_from_txt
 from spacy_helpers import spacy_load
 
@@ -47,11 +48,14 @@ class SnipsLoader:
         if paths not in cls._engines:
             filenames = []
             for path in paths:
-                filenames.extend(filenames_from_dirname(path))
-            print(filenames)
+                for wpath, _, files in walk(path):
+                    for filename in files:
+                        fullpath = join(wpath, filename)
+                        filenames.append(fullpath)
+                #filenames.extend(filenames_from_dirname(path))
             snips_engine = snips_train_from_txt(filenames)
             # The intent name is the name of the leaf folder
-            intent_names = [os.path.basename(p) for p in paths]
+            intent_names = [basename(p) for p in paths]
             cls._engines[paths] = SnipsEngine(snips_engine, intent_names, nlp)
         return cls._engines[paths]
 
