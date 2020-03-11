@@ -78,15 +78,18 @@ if __name__ == "__main__":
     agendas = [get_location, make_payment]
  
     tc = TestConversation(agendas)
-    tc.say("Hello")
-    tc.say("Why?")
-    tc.say("routing number: 8998 account number: 12321312321")
-    tc.say("None of your business")
-    tc.say("No way")
-    tc.say("routing number: 8998 account number: 12321312321")
-    tc.say("No way")
+    results = []
+    results.append(tc.say("Hello"))
+    results.append(tc.say("Why?"))
+    results.append(tc.say("routing number: 8998 account number: 12321312321"))
+    results.append(tc.say("None of your business"))
+    results.append(tc.say("No way"))
+    results.append(tc.say("routing number: 8998 account number: 12321312321"))
+    results.append(tc.say("No way"))
     #tc.say("I live in Chicago")
 
+
+assert repr(results) == "[([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([ask_for_bank_acct_d: A lot of people don't use electronic checks, but I promise it's easier], {}), ([promise_payment: Thanks!  I'll send along payment shortly, question: What location are you based out of?], {}), ([push_3: You haven't told me where you are located yet?], {}), ([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([ask_for_bank_acct_b: I always prefer to pay by electronic check, so I need your account numbers for that, question: What location are you based out of?], {}), ([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {})]"
 
 # get_location.store("get_location.yaml")
 # make_payment.store("make_payment.yaml")

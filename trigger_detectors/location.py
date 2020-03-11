@@ -1,11 +1,53 @@
 import string
 from typing import Any, List, Mapping, Tuple
 
-from ents import nent_extraction
 from extractions import Extractions
 from observation import Observation, MessageObservation
-from spacy_helpers import spacy_get_sentences
+from spacy_helpers import generate_data_chunks, spacy_get_sentences
 from trigger_detector import SnipsTriggerDetector, TriggerDetector
+
+
+# TODO Only actually using locs? Only used by first trigger detector.
+def nent_extraction(text, nlp):
+    orgs = []
+    # Like orgs, but religeous, political and nationality groups
+    norgs = []
+    # Locs are Spacy's GPE (country, city etc.) and Spacy's LOCs (bodies of water, mountain ranges etc.)
+    locs = []
+    people = []
+    products = []
+    money_amounts = []
+    # Well known events like WW2
+    events = []
+    # Quantities - like weight, distance
+    quants = []
+        
+    map_spacy_to_ours = {
+        'PERSON': people,
+        'NORP' : norgs,
+        'FAC' : locs,
+        'ORG' : orgs,
+        'GPE' : locs,
+        'LOC' : locs,
+        'PRODUCT' : products,
+        'EVENT' : events,
+        'PERCENT' : quants,
+        'MONEY' : money_amounts,
+        'QUANTITY' : quants
+    }
+
+    # Spacy can choke on large data, so chunk if we have to.
+    for chunk in generate_data_chunks(text):
+        doc = nlp(chunk)
+        for ent in doc.ents:
+            #print(ent.text)
+            #print(ent.label_)
+            ## For now, punt on something that's all numbers.
+            if ent.label_ in map_spacy_to_ours:
+                l = map_spacy_to_ours[ent.label_]
+                l.append(ent.text)
+
+    return {'orgs':orgs, 'norgs':norgs, 'locs':locs, 'people':people, 'products':products, 'money':money_amounts, 'events':events, 'quants':quants}
 
 
 class LocationInMessageTriggerDetector(SnipsTriggerDetector):

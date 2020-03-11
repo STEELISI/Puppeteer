@@ -4,6 +4,9 @@ class Extractions:
     def __init__(self):
         self._extractions = {}
 
+    def __repr__(self):
+        return repr(self._extractions)
+
     def add_extraction(self, name: str, value: Any):
         # TODO What if already present?
         self._extractions[name] = value

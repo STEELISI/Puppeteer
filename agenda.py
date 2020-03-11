@@ -72,8 +72,11 @@ class Action:
         self._exclusive_flag = exclusive_flag
         self._allowed_repeats = allowed_repeats
     
-    def __str__(self):
+    def __repr__(self):
         return "%s: %s" % (self._name, self._text)
+    
+    def __str__(self):
+        return repr(self)
     
     @property
     def name(self):
