@@ -3,51 +3,7 @@ from typing import Any, List, Mapping, Tuple
 
 from extractions import Extractions
 from observation import Observation, MessageObservation
-from spacy_helpers import generate_data_chunks, spacy_get_sentences
 from trigger_detector import SnipsTriggerDetector, TriggerDetector
-
-
-# TODO Only actually using locs? Only used by first trigger detector.
-def nent_extraction(text, nlp):
-    orgs = []
-    # Like orgs, but religeous, political and nationality groups
-    norgs = []
-    # Locs are Spacy's GPE (country, city etc.) and Spacy's LOCs (bodies of water, mountain ranges etc.)
-    locs = []
-    people = []
-    products = []
-    money_amounts = []
-    # Well known events like WW2
-    events = []
-    # Quantities - like weight, distance
-    quants = []
-        
-    map_spacy_to_ours = {
-        'PERSON': people,
-        'NORP' : norgs,
-        'FAC' : locs,
-        'ORG' : orgs,
-        'GPE' : locs,
-        'LOC' : locs,
-        'PRODUCT' : products,
-        'EVENT' : events,
-        'PERCENT' : quants,
-        'MONEY' : money_amounts,
-        'QUANTITY' : quants
-    }
-
-    # Spacy can choke on large data, so chunk if we have to.
-    for chunk in generate_data_chunks(text):
-        doc = nlp(chunk)
-        for ent in doc.ents:
-            #print(ent.text)
-            #print(ent.label_)
-            ## For now, punt on something that's all numbers.
-            if ent.label_ in map_spacy_to_ours:
-                l = map_spacy_to_ours[ent.label_]
-                l.append(ent.text)
-
-    return {'orgs':orgs, 'norgs':norgs, 'locs':locs, 'people':people, 'products':products, 'money':money_amounts, 'events':events, 'quants':quants}
 
 
 class LocationInMessageTriggerDetector(SnipsTriggerDetector):
@@ -76,7 +32,7 @@ class LocationInMessageTriggerDetector(SnipsTriggerDetector):
                 texts.append(observation.text)
         text = "\n".join(texts)
 
-        dict_of_ents = nent_extraction(text, self._nlp)
+        dict_of_ents = self._nlp.nent_extraction(text)
         locs_list = dict_of_ents['locs']
  
         trigger_map = {}
@@ -96,7 +52,7 @@ class LocationInMessageTriggerDetector(SnipsTriggerDetector):
                         max_confidence_we_saw_a_loc_statement = p
                 # For NOT intents, we want to ignore these locations.
                 elif 'NOT' in intent and p > .65:
-                    not_intent_ents = nent_extraction(sen, self._nlp)
+                    not_intent_ents = self._nlp.nent_extraction(sen)
                     not_intent_locs = not_intent_ents['locs']
 
         # Remove locations mentioned in cases where it's not a 'I live ____'
@@ -104,7 +60,7 @@ class LocationInMessageTriggerDetector(SnipsTriggerDetector):
         locs_list = [x for x in locs_list if x not in not_intent_locs]
 
         # Add any sentences where the single sentence is actually a location.
-        for sen in spacy_get_sentences(text, nlp=self._nlp):
+        for sen in self._nlp.get_sentences(text):
             sen = sen.translate(str.maketrans('', '', string.punctuation))
             for line in open(self._cities_path, 'r'):
                 if " ".join(line.split()).strip().lower() == " ".join(sen.split()).strip().lower():

@@ -7,6 +7,58 @@ from snips_nlu.default_configs import CONFIG_EN # type: ignore
 
 from spacy_helpers import generate_data_chunks, spacy_get_sentences, spacy_load
 
+class SpacyEngine:
+    def __init__(self, model: str) -> None:
+        self._nlp = spacy_load(model=model)
+
+    def get_sentences(self, text: str):
+        sens = []
+        for chunk in generate_data_chunks(text):
+            sens.extend(spacy_get_sentences(chunk, nlp=self._nlp))
+        return sens
+
+    # TODO Only actually using locs? Only used by first trigger detector.
+    def nent_extraction(self, text):
+        orgs = []
+        # Like orgs, but religeous, political and nationality groups
+        norgs = []
+        # Locs are Spacy's GPE (country, city etc.) and Spacy's LOCs (bodies of water, mountain ranges etc.)
+        locs = []
+        people = []
+        products = []
+        money_amounts = []
+        # Well known events like WW2
+        events = []
+        # Quantities - like weight, distance
+        quants = []
+            
+        map_spacy_to_ours = {
+            'PERSON': people,
+            'NORP' : norgs,
+            'FAC' : locs,
+            'ORG' : orgs,
+            'GPE' : locs,
+            'LOC' : locs,
+            'PRODUCT' : products,
+            'EVENT' : events,
+            'PERCENT' : quants,
+            'MONEY' : money_amounts,
+            'QUANTITY' : quants
+        }
+    
+        # Spacy can choke on large data, so chunk if we have to.
+        for chunk in generate_data_chunks(text):
+            doc = self._nlp(chunk)
+            for ent in doc.ents:
+                #print(ent.text)
+                #print(ent.label_)
+                ## For now, punt on something that's all numbers.
+                if ent.label_ in map_spacy_to_ours:
+                    l = map_spacy_to_ours[ent.label_]
+                    l.append(ent.text)
+    
+        return {'orgs':orgs, 'norgs':norgs, 'locs':locs, 'people':people, 'products':products, 'money':money_amounts, 'events':events, 'quants':quants}
+
 
 class SpacyLoader:
     # Implements lookup to make sure that we only load one copy of each Spacy
@@ -17,7 +69,8 @@ class SpacyLoader:
     @classmethod
     def nlp(cls, model='en_core_web_lg'):
         if model not in cls._nlp:
-            cls._nlp[model] = spacy_load(model=model)
+            cls._nlp[model] = SpacyEngine(model)
+            #cls._nlp[model] = spacy_load(model=model)
         return cls._nlp[model]
 
 
@@ -62,14 +115,13 @@ class SnipsEngine:
     
     def detect(self, text: str):
         intents = []
-        for chunk in generate_data_chunks(text):
-            sens = spacy_get_sentences(chunk, nlp=self._nlp)
-            for sen in sens:
-                results = self._engine.parse(sen)
-                intent = results["intent"]["intentName"]
-                p = results["intent"]["probability"]
-                if intent != None and intent != 'null':
-                    intents.append((intent, p, sen))
+        sens = self._nlp.get_sentences(text)
+        for sen in sens:
+            results = self._engine.parse(sen)
+            intent = results["intent"]["intentName"]
+            p = results["intent"]["probability"]
+            if intent != None and intent != 'null':
+                intents.append((intent, p, sen))
         return sorted(intents, key=lambda tup: tup[1], reverse=True)
 
 
