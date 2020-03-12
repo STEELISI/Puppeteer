@@ -19,7 +19,7 @@ class PuppeteerPolicyManager(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def plot_state(self, fig):
+    def plot_state(self, fig, agenda_states):
         raise NotImplementedError()
 
 

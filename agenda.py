@@ -453,7 +453,8 @@ class DefaultAgendaPolicy(AgendaPolicy):
         non_kickoff_probability = state.kickoff_trigger_probabilities.non_trigger_prob
         return 1.0 - non_kickoff_probability >= self._kickoff_thresh
 
-    def pick_actions(self, state: AgendaState, action_history: List[Action], turns_without_progress: int) -> List[Action]:
+    def pick_actions(self, state: AgendaState, action_history: List[Action],
+                     turns_without_progress: int) -> List[Action]:
         current_probability_map = state.state_probabilities.probabilities
         past_action_list = action_history
         
@@ -470,10 +471,10 @@ class DefaultAgendaPolicy(AgendaPolicy):
             
         # Work over the most likely state, to least likely, taking the first
         # actions we are allowed to given repeat allowance & exclusivity.
-        # for state by decresing probabilities that we're in that state:
+        # for state by decreasing probabilities that we're in that state:
         done = False
         for st in {k: v for k, v in sorted(current_probability_map.items(), key=lambda item: item[1], reverse=True)}:
-            # XXX Maybe need to check likeyhood.
+            # XXX Maybe need to check likelihood.
             if st in action_map:
                 for action_name in action_map[st]:
                     action = self._agenda.action(action_name)
@@ -640,18 +641,18 @@ class Agenda:
         return d
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> type:
+    def from_dict(cls, d: Mapping[str, Any]) -> "Agenda":
         obj = cls(d["name"])
         # Restore all fields, as stored in dict
         for (name, value) in d.items():
             setattr(obj, "_" + name, value)
         # Replace with objects, where appropriate.
 
-        def from_dict(dict_list, cls):
+        def from_dict(dict_list, new_cls):
             obj_dict = {}
-            for d in dict_list:
-                obj = cls.from_dict(d)
-                obj_dict[obj.name] = obj
+            for dd in dict_list:
+                new_obj = new_cls.from_dict(dd)
+                obj_dict[new_obj.name] = new_obj
             return obj_dict
         obj._states = from_dict(obj._states, State)
         obj._kickoff_triggers = from_dict(obj._kickoff_triggers, Trigger)
@@ -703,7 +704,7 @@ class Agenda:
 
     @classmethod
     def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
-             snips_multi_engine: bool=False) -> type:
+             snips_multi_engine: bool = False) -> "Agenda":
         with open(filename, "r") as file:
             d = yaml.load(file)
         agenda = cls.from_dict(d)
@@ -711,15 +712,13 @@ class Agenda:
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
         detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
-        #print(trigger_names, detectors)
+
         for detector in detectors:
             agenda.add_transition_trigger_detector(detector)
         # Kickoff triggers
         trigger_names = list(agenda._kickoff_triggers.keys())
         detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
-        #print(trigger_names, detectors)
+
         for detector in detectors:
             agenda.add_kickoff_trigger_detector(detector)
         return agenda
-
-
