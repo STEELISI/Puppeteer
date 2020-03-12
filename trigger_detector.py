@@ -3,7 +3,7 @@ import os
 from typing import Any, List, Mapping, Tuple
 
 from extractions import Extractions
-from nlu import SnipsLoader, SpacyLoader
+from nlu import SnipsEngine, SpacyEngine
 from observation import Observation, MessageObservation
 
 
@@ -48,8 +48,8 @@ class SnipsTriggerDetector(TriggerDetector):
     
     def load(self):
         for paths in self._paths_list:
-            engine = SnipsLoader.engine(paths, self._nlp)
-            self._engines.append(SnipsLoader.engine(paths, self._nlp))
+            engine = SnipsEngine.load(paths, self._nlp)
+            self._engines.append(engine)
             self._trigger_names.extend(engine.intent_names)
     
     @property
@@ -139,7 +139,7 @@ class TriggerDetectorLoader:
                         raise ValueError("Could not find detector for trigger: %s" % trigger_name)
         # Get standard Snips trigger detectors.
         if snips_trigger_paths:
-            nlp = SpacyLoader.nlp()
+            nlp = SpacyEngine.load()
             detector = SnipsTriggerDetector(snips_trigger_paths,
                                             nlp,
                                             multi_engine=snips_multi_engine)
