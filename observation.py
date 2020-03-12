@@ -2,6 +2,7 @@ import abc
 
 
 class Observation(abc.ABC):
+    """Observation of something that has happened since last time the Puppeteer was run."""
     # Abstract base class for all types of observations used by the Puppeteer
     # to update its beliefs.
     # Corresponds to InputManager from the v0.1 description.
@@ -9,6 +10,7 @@ class Observation(abc.ABC):
 
 
 class MessageObservation(Observation):
+    """A message received since last time the Puppeteer was run."""
     # An Observation class implementing a message that has been received. Can
     # subclass this for more specific message types with more specific information.
     

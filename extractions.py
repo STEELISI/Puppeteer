@@ -1,6 +1,8 @@
 from typing import Any
 
+
 class Extractions:
+    """Class holding a number of extractions."""
     def __init__(self):
         self._extractions = {}
 

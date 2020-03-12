@@ -8,6 +8,7 @@ import spacy
 
 
 class SpacyEngine:
+    """Wrapper around a Spacy model."""
     def __init__(self, model: str) -> None:
         self._nlp = spacy.load(model)
 
@@ -84,6 +85,7 @@ class SpacyEngine:
 
 
 class SpacyLoader:
+    """Loader for SpacyEngines."""
     # Implements lookup to make sure that we only load one copy of each Spacy
     # model.
 
@@ -97,8 +99,8 @@ class SpacyLoader:
 
 
 class SnipsEngine:
-    # Wrapper around a Snips engine.
-    
+    """Wrapper around a Snips engine."""
+
     def __init__(self, engine, intent_names, nlp):
         self._engine = engine
         self._intent_names = intent_names
@@ -148,6 +150,7 @@ class SnipsEngine:
 
 
 class SnipsLoader:
+    """Loader for SnipsEngines."""
     # Implements lookup to make sure that we only train one copy of each Snips
     # engine. An engine is defined by the set of paths for its training
     # directories (used as lookup key).

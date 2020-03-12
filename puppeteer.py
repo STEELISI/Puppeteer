@@ -10,6 +10,7 @@ from extractions import Extractions
 
 
 class PuppeteerPolicyManager(abc.ABC):
+    """Handler of Puppeteer behavior."""
     # A puppeteer policy is responsible for selecting the agenda to run.
     # Corresponds to ConversationOrchestrator from the v0.1 description.
 
@@ -21,7 +22,9 @@ class PuppeteerPolicyManager(abc.ABC):
     def _plot_state(self, fig):
         raise NotImplementedError()
 
+
 class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
+    """Handler of Puppeteer behavior."""
     # Essentially the same policy as run_puppeteer().
     
     def __init__(self, agendas: List[Agenda]):
@@ -159,8 +162,7 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
 
 
 class Puppeteer:
-    # Main class for an agendas-based conversation.
-    # Corresponds to MachineEngine from the v0.1 description.
+    """Main class for agendas-based conversation."""
 
     def __init__(self, agendas: List[Agenda], policy_cls=DefaultPuppeteerPolicyManager, plot_state=False):
         self._agendas = agendas

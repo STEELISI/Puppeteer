@@ -8,6 +8,7 @@ from observation import Observation, MessageObservation
 
 
 class TriggerDetector(abc.ABC):
+    """Class detecting triggers in observations."""
     # A trigger detector can take observations and return probabilities that
     # its triggers are "seen" in the observation. A trigger detector has a set
     # of triggers it is looking for.
@@ -28,6 +29,7 @@ class TriggerDetector(abc.ABC):
 
 
 class SnipsTriggerDetector(TriggerDetector):
+    """Class detecting triggers in observations, using Snips."""
     # A trigger detector using one or more Snips engines to detect triggers in
     # observations.
 
@@ -82,6 +84,7 @@ class SnipsTriggerDetector(TriggerDetector):
 
 
 class TriggerDetectorLoader:
+    """Class loading trigger detectors from disk."""
     # TODO Have abstract superclass and let this be DefaultTriggerDetectorLoader?
     def __init__(self, default_snips_path=None):
         self._default_snips_path = default_snips_path
