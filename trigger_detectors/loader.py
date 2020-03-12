@@ -1,3 +1,5 @@
+from os.path import dirname, join, realpath
+
 from nlu import SpacyLoader
 from trigger_detector import TriggerDetectorLoader
 from trigger_detectors.intent import MessageIntentTriggerDetector
@@ -19,7 +21,8 @@ class MyTriggerDetectorLoader(TriggerDetectorLoader):
 
         # Used by get_location
         nlp = SpacyLoader.nlp()
-        snips_paths = ["../turducken/data/training/puppeteer/get_location/i_live"]
-        cities_path = '../turducken/data/dictionaries/cities.txt'
+        rootdir = dirname(realpath(__file__))
+        snips_paths = [join(rootdir, "../../turducken/data/training/puppeteer/get_location/i_live")]
+        cities_path = join(rootdir, "../../turducken/data/dictionaries/cities.txt")
         self.register_detector(CityInExtractionsTriggerDetector())
         self.register_detector(LocationInMessageTriggerDetector(snips_paths, cities_path, nlp))

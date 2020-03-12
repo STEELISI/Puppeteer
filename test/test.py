@@ -71,11 +71,11 @@ if __name__ == "__main__":
     #agendas[0].store("agendas/get_location.yaml")
     #agendas[1].store("agendas/make_payment.yaml")
     # Set up trigger detector loader.
-    trigger_detector_loader = MyTriggerDetectorLoader(default_snips_path="../turducken/data/training/puppeteer")
+    trigger_detector_loader = MyTriggerDetectorLoader(default_snips_path="../../turducken/data/training/puppeteer")
     
     # Load agendas
-    get_location = Agenda.load("agendas/get_location.yaml", trigger_detector_loader)
-    make_payment = Agenda.load("agendas/make_payment.yaml", trigger_detector_loader)
+    get_location = Agenda.load("../agendas/get_location.yaml", trigger_detector_loader)
+    make_payment = Agenda.load("../agendas/make_payment.yaml", trigger_detector_loader)
     agendas = [get_location, make_payment]
  
     tc = TestConversation(agendas)
