@@ -2,9 +2,10 @@ from typing import List
 
 import numpy as np
 
-from agenda import Agenda, Puppeteer
+from agenda import Agenda
 from extractions import Extractions
 from observation import MessageObservation
+from puppeteer import Puppeteer
 from trigger_detectors.loader import MyTriggerDetectorLoader
 
 # import get_location
