@@ -510,9 +510,6 @@ class DefaultAgendaPolicy(AgendaPolicy):
 
     def pick_actions(self, state: AgendaState, action_history: List[Action],
                      turns_without_progress: int) -> List[Action]:
-        current_probability_map = state.state_probabilities.probabilities
-        past_action_list = action_history
-        
         actions_taken = []
         
         # Action map - maps states to a list of tuples of:
@@ -528,7 +525,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
         # actions we are allowed to given repeat allowance & exclusivity.
         # for state by decreasing probabilities that we're in that state:
         done = False
-        for st in {k: v for k, v in sorted(current_probability_map.items(), key=lambda item: item[1], reverse=True)}:
+        for st in {k: v for k, v in sorted(state.state_probabilities.probabilities.items(), key=lambda item: item[1], reverse=True)}:
             # XXX Maybe need to check likelihood.
             if st in action_map:
                 for action_name in action_map[st]:
@@ -536,7 +533,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
                     exclusive_flag = action.exclusive_flag
                     allowed_repeats = action.allowed_repeats
                     
-                    num_times_action_was_used = past_action_list.count(action)
+                    num_times_action_was_used = action_history.count(action)
                     
                     if num_times_action_was_used < allowed_repeats:
                         if exclusive_flag and actions_taken:
@@ -551,7 +548,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
                             break
             if done:
                 break
-        
+
         return actions_taken
 
 

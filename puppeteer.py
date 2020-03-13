@@ -114,7 +114,8 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
                 # Successfully kicked this off.
                 # Make this our current agenda.           
                 self._current_agenda = agenda
-                
+                #self._times_made_current[agenda.name] += 1
+
                 # Do first action.
                 # TODO run_puppeteer() uses [] for the action list, not self._action_history
                 new_actions = agenda.policy.pick_actions(agenda_state, [], 0)

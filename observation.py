@@ -1,4 +1,5 @@
 import abc
+from typing import List
 
 
 class Observation(abc.ABC):
@@ -14,16 +15,16 @@ class MessageObservation(Observation):
     # An Observation class implementing a message that has been received. Can
     # subclass this for more specific message types with more specific information.
     
-    def __init__(self, text: str):
+    def __init__(self, text: str) -> None:
         self._text = text
-        self._intents = []
+        self._intents: List[str] = []
     
     @property
     def text(self) -> str:
         return self._text
     
-    def has_intent(self, intent):
+    def has_intent(self, intent: str):
         return intent in self._intents
 
-    def add_intent(self, intent):
+    def add_intent(self, intent: str):
         return self._intents.append(intent)
