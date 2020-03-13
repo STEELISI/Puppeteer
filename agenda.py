@@ -57,11 +57,14 @@ class Trigger:
 
 
 class Action:
-    """Class naming and describing an action used in an agenda."""
+    """Class naming and describing an action used in an agenda.
 
-    # Note: Agenda implementation considers actions to be equal (for purposes
-    # of updating the state probabilities and checking how many times an action
-    # has been performed).
+    An action defines an exclusive_flag, indicating whether the action can be combined with other actions in the same
+    time step, or if it is exclusive. It is the responsibility of the AgendaPolicy to make sure that this flag is
+    actually complied with.
+
+    The allowed_repeats limit is the maximum number of times the action may be performed in a conversation.
+    """
 
     def __init__(self, name: str, text: str = "", exclusive_flag: bool = True, allowed_repeats: int = 2) -> None:
         self._name = name
@@ -101,7 +104,13 @@ class Action:
 
 
 class AgendaState:
-    """Holds trigger and state probabilities for an agenda, for an ongoing conversation."""
+    """Holds trigger and state probabilities for an agenda, for an ongoing conversation.
+
+    This is the main class holding agenda-level conversation state. Some state is also held in the PuppeteerPolicy.
+
+    The update() method is the main method for updating the agenda level state, based on extractions and observations
+    made since the last time step.
+    """
     def __init__(self, agenda) -> None:
         self._agenda = agenda
         self._transition_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=False)
@@ -126,6 +135,10 @@ class AgendaState:
                observations: List[Observation],
                old_extractions: Extractions
                ) -> Extractions:
+        """Updates the agenda-level state.
+
+        Updating the agenda level state, based on extractions and observations made since the last time step.
+        """
         
         new_extractions = Extractions()
 
@@ -143,7 +156,6 @@ class AgendaState:
         self._state_probabilities.reset()
 
     def plot_state(self, fig):
-        
         g = nx.MultiDiGraph()
         
         # Add states
@@ -182,7 +194,13 @@ class AgendaState:
 
 
 class TriggerProbabilities(abc.ABC):
-    """Handles trigger probabilities for an ongoing conversation."""
+    """Handles trigger probabilities for an ongoing conversation.
+
+    Trigger probabilities represent all information in observations that is relevant for state transition.
+
+    This is an abstract class. A concrete TriggerProbabilities subclass is also responsible for updating trigger
+    probabilities, by implementing the update() method.
+    """
 
     def __init__(self, agenda: "Agenda", kickoff: bool = False) -> None:
         if kickoff:
@@ -208,11 +226,27 @@ class TriggerProbabilities(abc.ABC):
 
     @abc.abstractmethod
     def update(self, observations: List[Observation], old_extractions: Extractions) -> Extractions:
+        """Updates trigger probabilities based on extractions and observations since the last time step.
+
+        Trigger probabilities represent all information in observations that is relevant for state transition between
+        time steps t and t+1. The input observations were made between time steps t and t+1, while the extractions
+        include all extractions made since the start of the conversation, up to time step t.
+
+        Post-update, this TriggerProbabilities represent the trigger probabilities relevant for state transition between
+        time steps t and t+1.
+
+        In the default implementation (see DefaultTriggerProbabilities), the update of the trigger probabilities is
+        based only on the observations and extractions, and dies not take the previous step's trigger probabilities into
+        account. This seems reasonable for most definitions of trigger probability update, but is not required.
+        """
         raise NotImplementedError()
         
 
 class DefaultTriggerProbabilities(TriggerProbabilities):
-    """Handles trigger probabilities for an ongoing conversation."""
+    """Handles trigger probabilities for an ongoing conversation.
+
+    This is the default TriggerProbabilities implementation. See class TriggerProbabilities for more details.
+    """
 
     def update(self, observations: List[Observation], old_extractions: Extractions) -> Extractions:
         trigger_map = {}
@@ -255,7 +289,19 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
 
 
 class StateProbabilities(abc.ABC):
-    """Handles state probabilities for an ongoing conversation."""
+    """Handles state probabilities for an ongoing conversation.
+
+    The state probabilities extend the state space of the agenda with a special "error" state that reflects the
+    situation where the conversation has failed or become confused in some way.
+
+    The Puppeteer currently uses a concept of state probabilities where the sum of all state probabilities may not sum
+    to exactly one. Some individual state probabilities may even be greater than one. To interpret these probability
+    measures as "standard" probabilities, simply normalize them by dividing by the sum.
+
+    This is an abstract class. A concrete StateProbabilities subclass is also responsible for updating state
+    probabilities, implementing the update() method. This includes defining the exact interpretation of the error state
+    and how its probability is set.
+    """
 
     def __init__(self, agenda: "Agenda") -> None:
         self._agenda = agenda
@@ -271,20 +317,32 @@ class StateProbabilities(abc.ABC):
     def probability(self, state_name: str) -> float:
         return self._probabilities[state_name]
 
-    @abc.abstractmethod
-    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]):
-        raise NotImplementedError()
+    def reset(self):
+        for state_name in self._probabilities:
+            if state_name == self._agenda.start_state.name:
+                self._probabilities[state_name] = 1.0
+            else:
+                self._probabilities[state_name] = 0.0
 
     @abc.abstractmethod
-    def reset(self):
+    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]):
+        """Updates state probabilities based on trigger probabilities.
+
+        Trigger probabilities represent all information in observations that is relevant for state transition. This
+        method is responsible for updating state probabilities, taking this information into account. If the pre-update
+        probabilities are the probabilities for time step t, post-update probabilities are the probabilities for time
+        step t+1, where the trigger probabilities reflect observations made between steps t and t+1.
+        """
         raise NotImplementedError()
 
 
 class DefaultStateProbabilities(StateProbabilities):
-    """Handles state probabilities for an ongoing conversation."""
+    """Handles state probabilities for an ongoing conversation.
+
+    This is the default StateProbabilities implementation. See class StateProbabilities for more details.
+    """
 
     def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]):
-
         # Note: This is essentially copied from puppeteer_base, with updated
         #       accesses to the agenda definition through self._agenda.
 
@@ -335,35 +393,41 @@ class DefaultStateProbabilities(StateProbabilities):
 
         self._probabilities = new_probability_map
 
-    def reset(self):
-        for state_name in self._probabilities:
-            if state_name == self._agenda.start_state.name:
-                self._probabilities[state_name] = 1.0
-            else:
-                self._probabilities[state_name] = 0.0
-
 
 class AgendaPolicy(abc.ABC):
-    """Handles agenda-level decisions about behavior."""
-    # An agenda policy is responsible for making decisions about how to execute
-    # an agenda, most notably by choosing next action(s).
-    # Corresponds to ActionManager from the v0.1 description.
-    
-    @abc.abstractmethod    
+    """Handles agenda-level decisions about behavior.
+
+    An agenda policy is responsible for making decisions about how to execute an agenda, most notably by choosing next
+    action(s). This class is an abstract class defining all queries that an AgendaPolicy must handle.
+
+    An agenda policy does not hold any conversation-level state. It is considered an integral part of an Agenda, and its
+    defining parameters are stored together with other agenda-defining information in agenda files.
+
+    The conversation-level information that the AgendaPolicy uses to make its decisions is stored in AgendaState, and
+    the PuppeteerPolicy object controlling the entire conversation. This information is provided to AgendaPolicy's query
+    methods and has been updated by the Puppeteer to take new observations and/or extractions into account, before the
+    method call.
+    """
+
+    @abc.abstractmethod
     def made_progress(self, state: AgendaState) -> bool:
+        """Returns true if the agenda became reached a terminus state as a result of the latest observations."""
         raise NotImplementedError()
 
     @abc.abstractmethod    
     def is_done(self, state: AgendaState) -> bool:
+        """Returns true if the agenda is likely in a terminus state."""
         raise NotImplementedError()
 
     @abc.abstractmethod    
     def can_kickoff(self, state: AgendaState) -> bool:
+        """Returns true if the agenda is in a state where it can kick off."""
         raise NotImplementedError()
 
     @abc.abstractmethod    
     def pick_actions(self, state: AgendaState, action_history: List[Action],
                      turns_without_progress: int) -> List[Action]:
+        """Picks zero or more appropriate actions to take, given the current state of the agenda."""
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -377,11 +441,11 @@ class AgendaPolicy(abc.ABC):
         
         
 class DefaultAgendaPolicy(AgendaPolicy):
-    """Handles agenda-level decisions about behavior."""
-    # Default implementaiton of AgendaPolicy, absed on turducken's implementation.
-    # The current implementation has one policy object per agenda, as different
-    # agendas use different values for the parameters.
-    
+    """Handles agenda-level decisions about behavior.
+
+    This is the default AgendaPolicy implementation. See AgendaPolicy documentation for further details.
+    """
+
     def __init__(self,
                  reuse=False,
                  max_transitions=5,
@@ -492,14 +556,39 @@ class DefaultAgendaPolicy(AgendaPolicy):
 
 
 class Agenda:
-    """Class holding a complete agenda definition."""
-    # Class defining all properties of an agenda, but not keeping track of the
-    # conversation state. A single Agenda object can be reused between many
-    # conversations (Puppeteers). An Agenda object may use language models (from
-    # the nlu module) through its trigger detectors, but language models are
-    # shared between agendas using the same model.
-    
-    # TODO Setters and getters for all members
+    """Class defining agenda behavior.
+
+    An Agenda object completely defines the behavior of an agenda. This includes:
+    - The name of the agenda.
+    - The agenda's state graph with:
+      - States, also defining start and terminus states
+      - Triggers for state transitions and kickoff
+      - State transitions.
+    - Trigger detectors for both kickoff and state transitions. These should implement trigger detection for:
+      - All state transition triggers defined by the state graph.
+      - All of the agenda's kickoff triggers.
+    - All actions used by the agenda.
+    - Action mappings defining which actions are applicable in which states. This mapping are divided into a normal
+      action map that is used in situations where the conversation is going well, and a stall action map that is used
+      when the conversation has stalled.
+    - A policy class used by the agenda to make decisions regarding things like action selection. This is specified by
+      providing a subclass of AgendaPolicy when creating an Agenda, either to the constructor, or the load() method.
+    - A trigger probability handling class used by the agenda to keep track of trigger probabilities. This is specified
+      by providing a subclass of TriggerProbabilities when creating an Agenda, either to the constructor, or the load()
+      method.
+    - A state probability handling class used by the agenda to keep track of state probabilities. This is specified by
+      providing a subclass of StateProbabilities when creating an Agenda, either to the constructor, or the load()
+      method.
+
+    Note that an Agenda object only defines agenda behavior and does not store any conversation-level state. The same
+    Agenda object can be used by different concurrently running conversations.
+
+    An Agenda object can be created in two different ways:
+    - Creating an object using the Agenda() constructor. The resulting object is a mostly empty agenda that must be
+      further defined by calling its various setter methods. In this mode of agenda creation, the user must make sure
+      that all required agenda information is set in the object, before it is actually used in a conversation.
+    - Loading an agenda from file using the load() method. In this case, the method returns a ready-to-use agenda.
+    """
 
     def __init__(self, name: str,
                  policy_cls=DefaultAgendaPolicy,
@@ -519,7 +608,6 @@ class Agenda:
         self._start_state_name = None
         self._terminus_names = []
         self._actions = {}
-        # TODO Do action maps belong to the AgendaPolicy?
         self._action_map = {}
         self._stall_action_map = {}
         # Do we want to store trigger detectors somewhere else?
