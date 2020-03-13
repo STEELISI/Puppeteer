@@ -27,5 +27,3 @@ class MessageObservation(Observation):
 
     def add_intent(self, intent):
         return self._intents.append(intent)
-
-

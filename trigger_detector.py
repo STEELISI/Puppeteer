@@ -1,6 +1,6 @@
 import abc
 import os
-from typing import Any, List, Mapping, Tuple
+from typing import List, Mapping, Tuple
 
 from extractions import Extractions
 from nlu import SnipsEngine, SpacyEngine
@@ -14,7 +14,8 @@ class TriggerDetector(abc.ABC):
     # of triggers it is looking for.
     # Corresponds partly to TriggerManage from the v0.1 description.
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def trigger_names(self) -> List[str]:
         raise NotImplementedError()
 
@@ -24,7 +25,8 @@ class TriggerDetector(abc.ABC):
         
     @abc.abstractmethod
     # TODO Use TriggerProbabilities as output?
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
+    def trigger_probabilities(self, observations: List[Observation],
+                              old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
         raise NotImplementedError()
 
 
@@ -34,13 +36,13 @@ class SnipsTriggerDetector(TriggerDetector):
     # observations.
 
     def __init__(self, paths: List[str], nlp, multi_engine=False):
-       # TODO Is there a Snips convention for how to store its training data?
+        # TODO Is there a Snips convention for how to store its training data?
         self._engines = []
         self._trigger_names = []
         self._nlp = nlp
         self._paths_list = []
         
-       # Preparer creation of our Snips engine or engines.
+        # Prepare creation of our Snips engine or engines.
         if multi_engine:
             self._paths_list = [[p] for p in paths]
         else:
@@ -56,7 +58,8 @@ class SnipsTriggerDetector(TriggerDetector):
     def trigger_names(self) -> List[str]:
         return self._trigger_names
 
-    def trigger_probabilities(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
+    def trigger_probabilities(self, observations: List[Observation],
+                              old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
         texts = []
         for observation in observations:
             if isinstance(observation, MessageObservation):
@@ -80,7 +83,7 @@ class SnipsTriggerDetector(TriggerDetector):
             non_event_prob = 1.0 - max(trigger_map.values())
         else:
             non_event_prob = 1.0
-        return (trigger_map, non_event_prob, Extractions())
+        return trigger_map, non_event_prob, Extractions()
 
 
 class TriggerDetectorLoader:
@@ -112,7 +115,7 @@ class TriggerDetectorLoader:
         snips_trigger_paths = []
         for trigger_name in trigger_names:
             if (agenda_name in self._registered_by_agenda and
-                trigger_name in self._registered_by_agenda[agenda_name]):
+                    trigger_name in self._registered_by_agenda[agenda_name]):
                 detector = self._registered_by_agenda[agenda_name][trigger_name]
                 detector.load()
                 detectors.append(detector)
@@ -122,10 +125,10 @@ class TriggerDetectorLoader:
                 detectors.append(detector)
             else:
                 # See if this is a standard Snips trigger.
-                def lookfor(trigger_name, path):
-                    for (root, dirs, files) in os.walk(path):
-                        if trigger_name in dirs:
-                            return os.path.join(root, trigger_name)
+                def lookfor(dirname, rootpath):
+                    for (root, dirs, files) in os.walk(rootpath):
+                        if dirname in dirs:
+                            return os.path.join(root, dirname)
                     return None
                 if agenda_name in self._snips_paths:
                     path = lookfor(trigger_name, self._snips_paths[agenda_name])
@@ -147,8 +150,3 @@ class TriggerDetectorLoader:
             detectors.append(detector)
         assert detectors
         return detectors
-
-
-
-
-        

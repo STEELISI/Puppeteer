@@ -175,7 +175,7 @@ class Puppeteer:
         self._last_actions = self._policy.act(self._agenda_states)
         if self._fig is not None:
             self._policy.plot_state(self._fig, self._agenda_states)
-        return (self._last_actions, new_extractions)
+        return self._last_actions, new_extractions
 
     def get_conversation_state(self):
         # Used for storing of conversation state

@@ -232,7 +232,6 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
                     elif trigger_map[trigger_name] < p:
                         trigger_map[trigger_name] = p
 
-        # TODO Is this consistent with Turducken's definition of non_event_prob?
         if trigger_map:
             non_trigger_prob = 1.0 - max(trigger_map.values())
         else:
@@ -261,8 +260,6 @@ class StateProbabilities(abc.ABC):
     def __init__(self, agenda: "Agenda") -> None:
         self._agenda = agenda
         self._probabilities = {s.name: 0.0 for s in agenda.states}
-        # TODO Do all overriding implementations have an error state, or move
-        # this to default?
         self._probabilities["ERROR_STATE"] = 0.0
         self._probabilities[agenda.start_state.name] = 1.0
 
@@ -291,13 +288,11 @@ class DefaultStateProbabilities(StateProbabilities):
         # Note: This is essentially copied from puppeteer_base, with updated
         #       accesses to the agenda definition through self._agenda.
 
-        # Check if the last of the actions taken "belong" to this agenda. Earlier
+        # Check if the last of the actions taken "belongs" to this agenda. Earlier
         # actions may be the finishing actions of a deactivated agenda.
-        # TODO What if actions are shared between agendas?
         if actions and not actions[-1] in self._agenda.actions:
             return
         
-        # TODO Temporary implementation, just getting info into old variables.
         current_probability_map = self._probabilities
         trigger_map = trigger_probabilities.probabilities
         non_event_prob = trigger_probabilities.non_trigger_prob
@@ -387,10 +382,6 @@ class DefaultAgendaPolicy(AgendaPolicy):
     # The current implementation has one policy object per agenda, as different
     # agendas use different values for the parameters.
     
-    # TODO Move parameters to agenda, allowing us to use a common policy object.
-    # for all agendas? These parameters feel very specific to this kind of
-    # agenda policy though.
-
     def __init__(self,
                  reuse=False,
                  max_transitions=5,
