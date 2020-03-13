@@ -1,5 +1,5 @@
 import abc
-from typing import Any, List, Mapping, Type
+from typing import Any, Dict, List, Mapping, Type
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -436,7 +436,7 @@ class AgendaPolicy(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> type:
+    def from_dict(cls, d: Mapping[str, Any], agenda: "Agenda") -> type:
         raise NotImplementedError()
         
         
@@ -447,6 +447,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
     """
 
     def __init__(self,
+                 agenda: "Agenda",
                  reuse=False,
                  max_transitions=5,
                  absolute_accept_thresh=0.6,
@@ -454,14 +455,13 @@ class DefaultAgendaPolicy(AgendaPolicy):
                  accept_thresh_differential=0.1,
                  # TODO Convention right now: Have to be sure of kickoff.
                  kickoff_thresh=1.0) -> None:
+        self._agenda = agenda
         self._reuse = reuse                        # TODO When to use?
         self._max_transitions = max_transitions    # TODO When to use?
         self._absolute_accept_thresh = absolute_accept_thresh
         self._min_accept_thresh_w_differential = min_accept_thresh_w_differential
         self._accept_thresh_differential = accept_thresh_differential
         self._kickoff_thresh = kickoff_thresh
-        # TODO Temporary hack to get acces to agenda.
-        self._agenda = None
 
     def to_dict(self) -> Mapping[str, Any]:
         field_names = ["_reuse", "_max_transitions", "_absolute_accept_thresh",
@@ -471,8 +471,8 @@ class DefaultAgendaPolicy(AgendaPolicy):
         return d
     
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "DefaultAgendaPolicy":
-        return cls(d["reuse"], d["max_transitions"],
+    def from_dict(cls, d: Mapping[str, Any], agenda: "Agenda") -> "DefaultAgendaPolicy":
+        return cls(agenda, d["reuse"], d["max_transitions"],
                    d["absolute_accept_thresh"],
                    d["min_accept_thresh_w_differential"],
                    d["accept_thresh_differential"],
@@ -595,11 +595,9 @@ class Agenda:
                  state_probabilities_cls=DefaultStateProbabilities,
                  trigger_probabilities_cls=DefaultTriggerProbabilities) -> None:
         self._name = name
-        self._policy = policy_cls()
+        self._policy = policy_cls(self)
         self._trigger_probabilities_cls = trigger_probabilities_cls
         self._state_probabilities_cls = state_probabilities_cls
-        # TODO Temporary hack to get access to agenda from policy
-        self._policy._agenda = self
         # Setting everything else empty to begin with
         self._states = {}
         self._transition_triggers = {}
@@ -647,12 +645,12 @@ class Agenda:
         return self._actions[action_name]
 
     @property
-    def action_map(self) -> Mapping[str, Action]:
+    def action_map(self) -> Mapping[str, List[str]]:
         # TODO Replace this method with per-state lookup
         return self._action_map
 
     @property
-    def stall_action_map(self) -> Mapping[str, Action]:
+    def stall_action_map(self) -> Mapping[str, List[str]]:
         # TODO Replace this method with per-state lookup
         return self._stall_action_map
 
@@ -720,13 +718,21 @@ class Agenda:
         return d
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "Agenda":
-        obj = cls(d["name"])
+    def from_dict(cls, d: Dict[str, Any],
+                  policy_cls,
+                  state_probabilities_cls,
+                  trigger_probabilities_cls) -> "Agenda":
+        obj = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
+                  trigger_probabilities_cls=trigger_probabilities_cls)
+        # Special handling of policy
+        d_policy = d["policy"]
+        del d["policy"]
+        obj._policy = policy_cls.from_dict(d_policy, obj)
         # Restore all fields, as stored in dict
         for (name, value) in d.items():
             setattr(obj, "_" + name, value)
-        # Replace with objects, where appropriate.
 
+        # Replace with objects, where appropriate.
         def from_dict(dict_list, new_cls):
             obj_dict = {}
             for dd in dict_list:
@@ -737,9 +743,6 @@ class Agenda:
         obj._kickoff_triggers = from_dict(obj._kickoff_triggers, Trigger)
         obj._transition_triggers = from_dict(obj._transition_triggers, Trigger)
         obj._actions = from_dict(obj._actions, Action)
-        # TODO Add policy_class parameter to this method.
-        obj._policy = DefaultAgendaPolicy.from_dict(obj._policy)
-        obj._policy._agenda = obj
         return obj
 
     def add_state(self, state: State):
@@ -783,10 +786,22 @@ class Agenda:
 
     @classmethod
     def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
-             snips_multi_engine: bool = False) -> "Agenda":
+             snips_multi_engine: bool = False,
+             policy_cls=DefaultAgendaPolicy,
+             state_probabilities_cls=DefaultStateProbabilities,
+             trigger_probabilities_cls=DefaultTriggerProbabilities) -> "Agenda":
+        """Load an agenda from file.
+
+        The policy class provided must be consistent with the policy parameters given in the file, i.e., it is the
+        user's responsibility to know what policies are compatible with the file. This is of course only an issue when
+        non-default policy classes are used.
+
+        See class TriggerDetectorLoader for information on the trigger_detector_loader and snips_multi_engine
+        parameters.
+        """
         with open(filename, "r") as file:
             d = yaml.load(file)
-        agenda = cls.from_dict(d)
+        agenda = cls.from_dict(d, policy_cls, state_probabilities_cls, trigger_probabilities_cls)
         # Load trigger detectors
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
