@@ -397,10 +397,10 @@ class DefaultStateProbabilities(StateProbabilities):
 class AgendaPolicy(abc.ABC):
     """Handles agenda-level decisions about behavior.
 
-    An agenda policy is responsible for making decisions about how to execute an agenda, most notably by choosing next
+    An AgendaPolicy is responsible for making decisions about how to execute an agenda, most notably by choosing next
     action(s). This class is an abstract class defining all queries that an AgendaPolicy must handle.
 
-    An agenda policy does not hold any conversation-level state. It is considered an integral part of an Agenda, and its
+    An AgendaPolicy does not hold any conversation-level state. It is considered an integral part of an Agenda, and its
     defining parameters are stored together with other agenda-defining information in agenda files.
 
     The conversation-level information that the AgendaPolicy uses to make its decisions is stored in AgendaState, and

@@ -9,13 +9,33 @@ from observation import Observation
 from extractions import Extractions
 
 
-class PuppeteerPolicyManager(abc.ABC):
-    """Handler of Puppeteer behavior."""
-    # A puppeteer policy is responsible for selecting the agenda to run.
-    # Corresponds to ConversationOrchestrator from the v0.1 description.
+class PuppeteerPolicy(abc.ABC):
+    """Handles inter-agenda decisions about behavior.
+
+    An PuppeteerPolicy is responsible for making decisions about what agenda to run and when to restart agendas, based
+    on agenda states. Agenda-level decisions, e.g., which of the agenda's actions to choose in a given situation, are
+    delegated to the AgendaPolicy instance associated with each Agenda.
+
+    This class is an abstract class defining all methods that a PuppeteerPolicy must implement, most notably the act()
+    method.
+
+    A concrete PuppeteerPolicy subclass instance (object) is tied to a Puppeteer instance and is responsible for all
+    action decisions for the conversation handled by the Puppeteer instance. This means that a PuppeteerPolicy instance
+    is tied to a specific conversation, and may hold conversation-specific state.
+    """
 
     @abc.abstractmethod
     def act(self, agenda_states: Mapping[str, AgendaState]) -> List[Action]:
+        """"Picks zero or more appropriate actions to take, given the current state of the conversation.
+
+        Args:
+            agenda_states: For each agenda (indexed by name), the AgendaState object holding the current belief about
+                the state of the agenda, based on the latest observations -- the observations that this method is
+                reacting to.
+
+        Returns:
+            A list of Action objects representing actions to take, in given order.
+        """
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -23,9 +43,11 @@ class PuppeteerPolicyManager(abc.ABC):
         raise NotImplementedError()
 
 
-class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
-    """Handler of Puppeteer behavior."""
-    # Essentially the same policy as run_puppeteer().
+class DefaultPuppeteerPolicy(PuppeteerPolicy):
+    """Handles inter-agenda decisions about behavior.
+
+    This is the default PuppeteerPolicy implementation. See PuppeteerPolicy documentation for further details.
+    """
     
     def __init__(self, agendas: List[Agenda]):
         self._agendas = agendas
@@ -44,6 +66,10 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
         pass
 
     def act(self, agenda_states: Mapping[str, AgendaState]) -> List[Action]:
+        """"Picks zero or more appropriate actions to take, given the current state of the conversation.
+
+        See documentation of this method in PuppeteerPolicy.
+        """
         agenda = self._current_agenda
         last_agenda = None
         actions = []
@@ -155,9 +181,37 @@ class DefaultPuppeteerPolicyManager(PuppeteerPolicyManager):
 
 
 class Puppeteer:
-    """Main class for agendas-based conversation."""
+    """Agendas-based dialog bot.
 
-    def __init__(self, agendas: List[Agenda], policy_cls=DefaultPuppeteerPolicyManager, plot_state=False):
+    A Puppeteer instance is responsible for handling all aspects of the computer's side of the conversation, making
+    decisions on conversational (or other) actions to take based on the conversational state and, possibly, other
+    information about the world. There is a one-to-one relationship between Puppeteers and conversations, i.e., a
+    Puppeteer handles a single conversation, and a conversation is typically handled by a single Puppeteer.
+
+    A Puppeteer delegates most of its responsibilities to other classes, most notably:
+    - Agenda: The Puppeteer's behavior is largely defined by a set of agendas associated with the Puppeteer. An
+        Agenda can be described as a dialog mini-bot handling a specific topic or domain of conversation with a very
+        specific and limited goal, e.g., getting to know the name of the other party. A Puppeteer's conversational
+        abilities are thus defined by the collective abilities of the Agendas it can use.
+    - PuppeteerPolicy: A PuppeteerPolicy is responsible for picking an agenda to use based on the conversational state,
+        switching between agendas when appropriate. The choice of policy can be made thorugh the Puppeteer's
+        constructor, with the DefaultPuppeteerPolicy class as the default choice if no other class is specified.
+
+    Architecturally, the Puppeteer is implemented much as a general agent, getting information about the world through
+    observations and reacting by selecting actions appropriate for some goal. Its main purpose is to be used as a dialog
+    bot, but could probably be used for other purposes as well.
+
+    A Puppeteer session consists of first creating the Puppeteer, defining its set of agendas and its policy. Then the
+    conversation is simply a series of turns, each turn having the following sequence of events:
+        1. The other party acts, typically some kind of conversational action.
+        2. The implementation surrounding the Puppeteer registers the actions of the other party, and possibly other
+           useful information about the world. This
+        3. The information gathered is fed to the Puppeteer through its react() method. The Puppeteer chooses a sequence
+           of actions to take based on the information.
+        4. The surrounding implementation takes the Puppeteer's action, and realizes them, typically providing some kind
+           of reply to the other party.
+    """
+    def __init__(self, agendas: List[Agenda], policy_cls=DefaultPuppeteerPolicy, plot_state=False):
         self._agendas = agendas
         self._agenda_states = {a.name: AgendaState(a) for a in agendas}
         self._last_actions = []
@@ -169,6 +223,22 @@ class Puppeteer:
             self._fig = None
         
     def react(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[List[Action], Extractions]:
+        """"Picks zero or more appropriate actions to take, given the input and current state of the conversation.
+
+        Note that the actions are only selected by the Puppeteer, but no actions are actually performed. It is the
+        responsibility of the surrounding implementation to take concrete action, based on what is returned.
+
+        Args:
+            observations: A list of Observations made since the last turn.
+            old_extractions: Extractions made during the whole conversation. This may also include extractions made by
+                other modules based on the current turn.
+
+        Returns:
+            A pair consisting of:
+            - A list of Action objects representing actions to take, in given order.
+            - An updated Extractions object, combining the input extractions with any extractions made by the Puppeteer
+              in this method call.
+        """
         new_extractions = Extractions()
         for agenda_state in self._agenda_states.values():
             extractions = agenda_state.update(self._last_actions, observations, old_extractions)
@@ -177,8 +247,3 @@ class Puppeteer:
         if self._fig is not None:
             self._policy.plot_state(self._fig, self._agenda_states)
         return self._last_actions, new_extractions
-
-    def get_conversation_state(self):
-        # Used for storing of conversation state
-        # TODO store _beliefs and _last_actions.
-        pass
