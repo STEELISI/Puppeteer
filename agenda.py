@@ -10,17 +10,32 @@ from observation import Observation
 from trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
-class State:
-    """Class naming and describing a state in an agenda."""
-    
-    def __init__(self, name: str, description: str = "") -> None:
+class AgendaAttribute(abc.ABC):
+
+    def __init__(self, name: str) -> None:
         self._name = name
-        self._description = description
-    
+
     @property
     def name(self) -> str:
         return self._name
+
+    @abc.abstractmethod
+    def to_dict(self) -> Dict[str, str]:
+        raise NotImplementedError()
+
+    @classmethod
+    @abc.abstractmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "AgendaAttribute":
+        raise NotImplementedError()
+
+
+class State(AgendaAttribute):
+    """Class naming and describing a state in an agenda."""
     
+    def __init__(self, name: str, description: str = "") -> None:
+        super(State, self).__init__(name)
+        self._description = description
+
     @property
     def description(self) -> str:
         return self._description
@@ -33,17 +48,13 @@ class State:
         return cls(d["name"], d["description"])
 
 
-class Trigger:
+class Trigger(AgendaAttribute):
     """Class naming and describing a trigger in an agenda."""
 
     def __init__(self, name: str, description: str = "") -> None:
-        self._name = name
+        super(Trigger, self).__init__(name)
         self._description = description
-    
-    @property
-    def name(self) -> str:
-        return self._name
-    
+
     @property
     def description(self) -> str:
         return self._description
@@ -56,7 +67,7 @@ class Trigger:
         return cls(d["name"], d["description"])
 
 
-class Action:
+class Action(AgendaAttribute):
     """Class naming and describing an action used in an agenda.
 
     An action defines an exclusive_flag, indicating whether the action can be combined with other actions in the same
@@ -67,7 +78,7 @@ class Action:
     """
 
     def __init__(self, name: str, text: str = "", exclusive_flag: bool = True, allowed_repeats: int = 2) -> None:
-        self._name = name
+        super(Action, self).__init__(name)
         self._text = text
         self._exclusive_flag = exclusive_flag
         self._allowed_repeats = allowed_repeats
@@ -77,11 +88,7 @@ class Action:
     
     def __str__(self) -> str:
         return repr(self)
-    
-    @property
-    def name(self) -> str:
-        return self._name
-    
+
     @property
     def text(self) -> str:
         return self._text
@@ -724,27 +731,27 @@ class Agenda:
                   policy_cls: Type[AgendaPolicy],
                   state_probabilities_cls: Type[StateProbabilities],
                   trigger_probabilities_cls: Type[TriggerProbabilities]) -> "Agenda":
-        obj = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
-                  trigger_probabilities_cls=trigger_probabilities_cls)
-        # Special handling of policy
-        d_policy = d["policy"]
-        del d["policy"]
-        obj._policy = policy_cls.from_dict(d_policy, obj)
-        # Restore all fields, as stored in dict
-        for (name, value) in d.items():
-            setattr(obj, "_" + name, value)
-
-        # Replace with objects, where appropriate.
-        def from_dict(dict_list: List[Dict[str, Any]], new_cls: Type[object]) -> Dict[str, Any]:
+        # Replace with objects in d, where appropriate.
+        def from_dict(dict_list: List[Dict[str, Any]], new_cls: Type[AgendaAttribute]) -> Dict[str, Any]:
             obj_dict = {}
             for dd in dict_list:
                 new_obj = new_cls.from_dict(dd)
                 obj_dict[new_obj.name] = new_obj
             return obj_dict
-        obj._states = from_dict(obj._states, State)
-        obj._kickoff_triggers = from_dict(obj._kickoff_triggers, Trigger)
-        obj._transition_triggers = from_dict(obj._transition_triggers, Trigger)
-        obj._actions = from_dict(obj._actions, Action)
+        d["states"] = from_dict(d["states"], State)
+        d["kickoff_triggers"] = from_dict(d["kickoff_triggers"], Trigger)
+        d["transition_triggers"] = from_dict(d["transition_triggers"], Trigger)
+        d["actions"] = from_dict(d["actions"], Action)
+
+        obj = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
+                  trigger_probabilities_cls=trigger_probabilities_cls)
+        # Special handling of policy
+        d_policy = d["policy"]
+        del d["policy"]
+        # Restore all fields, as stored in dict
+        for (name, value) in d.items():
+            setattr(obj, "_" + name, value)
+        obj._policy = policy_cls.from_dict(d_policy, obj)
         return obj
 
     def add_state(self, state: State) -> None:
