@@ -23,8 +23,8 @@ class MessageObservation(Observation):
     def text(self) -> str:
         return self._text
     
-    def has_intent(self, intent: str):
+    def has_intent(self, intent: str) -> bool:
         return intent in self._intents
 
-    def add_intent(self, intent: str):
+    def add_intent(self, intent: str) -> None:
         return self._intents.append(intent)

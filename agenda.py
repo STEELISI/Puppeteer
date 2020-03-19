@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict, List, Mapping, Type
+from typing import Any, Dict, List, Optional, Type
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -18,18 +18,18 @@ class State:
         self._description = description
     
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
     
     @property
-    def description(self):
+    def description(self) -> str:
         return self._description
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, str]:
         return {"name": self._name, "description": self._description}
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: Dict[str, Any]) -> "State":
         return cls(d["name"], d["description"])
 
 
@@ -41,18 +41,18 @@ class Trigger:
         self._description = description
     
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
     
     @property
-    def description(self):
+    def description(self) -> str:
         return self._description
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, str]:
         return {"name": self._name, "description": self._description}
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: Dict[str, Any]) -> "Trigger":
         return cls(d["name"], d["description"])
 
 
@@ -72,34 +72,34 @@ class Action:
         self._exclusive_flag = exclusive_flag
         self._allowed_repeats = allowed_repeats
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "%s: %s" % (self._name, self._text)
     
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self)
     
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
     
     @property
-    def text(self):
+    def text(self) -> str:
         return self._text
 
     @property
-    def exclusive_flag(self):
+    def exclusive_flag(self) -> bool:
         return self._exclusive_flag
     
     @property
-    def allowed_repeats(self):
+    def allowed_repeats(self) -> int:
         return self._allowed_repeats
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {"name": self._name, "text": self._text, "exclusive_flag": self._exclusive_flag,
                 "allowed_repeats": self._allowed_repeats}
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: Dict[str, Any]) -> "Action":
         return cls(d["name"], d["text"], d["exclusive_flag"], d["allowed_repeats"])
 
 
@@ -111,7 +111,7 @@ class AgendaState:
     The update() method is the main method for updating the agenda level state, based on extractions and observations
     made since the last time step.
     """
-    def __init__(self, agenda) -> None:
+    def __init__(self, agenda: "Agenda") -> None:
         self._agenda = agenda
         self._transition_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=False)
         self._kickoff_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=True)
@@ -119,15 +119,15 @@ class AgendaState:
         self._pos = None
 
     @property
-    def transition_trigger_probabilities(self):
+    def transition_trigger_probabilities(self) -> "TriggerProbabilities":
         return self._transition_trigger_probabilities
 
     @property
-    def kickoff_trigger_probabilities(self):
+    def kickoff_trigger_probabilities(self) -> "TriggerProbabilities":
         return self._kickoff_trigger_probabilities
 
     @property
-    def state_probabilities(self):
+    def state_probabilities(self) -> "StateProbabilities":
         return self._state_probabilities
 
     def update(self,
@@ -152,10 +152,10 @@ class AgendaState:
         
         return new_extractions
 
-    def reset(self):
+    def reset(self) -> None:
         self._state_probabilities.reset()
 
-    def plot_state(self, fig):
+    def plot_state(self, fig: plt.Figure) -> None:
         g = nx.MultiDiGraph()
         
         # Add states
@@ -212,7 +212,7 @@ class TriggerProbabilities(abc.ABC):
         self._non_trigger_prob = 1.0
     
     @property
-    def probabilities(self) -> Mapping[str, float]:
+    def probabilities(self) -> Dict[str, float]:
         # TODO Replace this with a per-trigger lookup method.
         return self._probabilities
 
@@ -221,7 +221,7 @@ class TriggerProbabilities(abc.ABC):
         return self._non_trigger_prob
 
     @property
-    def trigger_detectors(self):
+    def trigger_detectors(self) -> List[TriggerDetector]:
         return self._trigger_detectors
 
     @abc.abstractmethod
@@ -249,8 +249,8 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
     """
 
     def update(self, observations: List[Observation], old_extractions: Extractions) -> Extractions:
-        trigger_map = {}
-        non_trigger_probs = []
+        trigger_map: Dict[str, float] = {}
+        non_trigger_probs: List[float] = []
         new_extractions = Extractions()
         
         for trigger_detector in self.trigger_detectors:
@@ -310,14 +310,14 @@ class StateProbabilities(abc.ABC):
         self._probabilities[agenda.start_state.name] = 1.0
 
     @property
-    def probabilities(self) -> Mapping[str, float]:
+    def probabilities(self) -> Dict[str, float]:
         # TODO Replace use of this with per-trigger lookup.
         return self._probabilities
 
     def probability(self, state_name: str) -> float:
         return self._probabilities[state_name]
 
-    def reset(self):
+    def reset(self) -> None:
         for state_name in self._probabilities:
             if state_name == self._agenda.start_state.name:
                 self._probabilities[state_name] = 1.0
@@ -325,7 +325,7 @@ class StateProbabilities(abc.ABC):
                 self._probabilities[state_name] = 0.0
 
     @abc.abstractmethod
-    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]):
+    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
         """Updates state probabilities based on trigger probabilities.
 
         Trigger probabilities represent all information in observations that is relevant for state transition. This
@@ -342,7 +342,7 @@ class DefaultStateProbabilities(StateProbabilities):
     This is the default StateProbabilities implementation. See class StateProbabilities for more details.
     """
 
-    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]):
+    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
         # Note: This is essentially copied from puppeteer_base, with updated
         #       accesses to the agenda definition through self._agenda.
 
@@ -408,6 +408,8 @@ class AgendaPolicy(abc.ABC):
     methods and has been updated by the Puppeteer to take new observations and/or extractions into account, before the
     method call.
     """
+    def __init__(self, agenda: "Agenda") -> None:
+        self._agenda = agenda
 
     @abc.abstractmethod
     def made_progress(self, state: AgendaState) -> bool:
@@ -431,12 +433,12 @@ class AgendaPolicy(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def to_dict(self) -> Mapping[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         raise NotImplementedError()
 
     @classmethod
     @abc.abstractmethod
-    def from_dict(cls, d: Mapping[str, Any], agenda: "Agenda") -> type:
+    def from_dict(cls, d: Dict[str, Any], agenda: "Agenda") -> "AgendaPolicy":
         raise NotImplementedError()
         
         
@@ -448,14 +450,14 @@ class DefaultAgendaPolicy(AgendaPolicy):
 
     def __init__(self,
                  agenda: "Agenda",
-                 reuse=False,
-                 max_transitions=5,
-                 absolute_accept_thresh=0.6,
-                 min_accept_thresh_w_differential=0.2,
-                 accept_thresh_differential=0.1,
+                 reuse: bool = False,
+                 max_transitions: int = 5,
+                 absolute_accept_thresh: float = 0.6,
+                 min_accept_thresh_w_differential: float = 0.2,
+                 accept_thresh_differential: float = 0.1,
                  # TODO Convention right now: Have to be sure of kickoff.
-                 kickoff_thresh=1.0) -> None:
-        self._agenda = agenda
+                 kickoff_thresh: float = 1.0) -> None:
+        super(DefaultAgendaPolicy, self).__init__(agenda)
         self._reuse = reuse                        # TODO When to use?
         self._max_transitions = max_transitions    # TODO When to use?
         self._absolute_accept_thresh = absolute_accept_thresh
@@ -463,7 +465,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
         self._accept_thresh_differential = accept_thresh_differential
         self._kickoff_thresh = kickoff_thresh
 
-    def to_dict(self) -> Mapping[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         field_names = ["_reuse", "_max_transitions", "_absolute_accept_thresh",
                        "_min_accept_thresh_w_differential",
                        "_accept_thresh_differential", "_kickoff_thresh"]
@@ -471,7 +473,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
         return d
     
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any], agenda: "Agenda") -> "DefaultAgendaPolicy":
+    def from_dict(cls, d: Dict[str, Any], agenda: "Agenda") -> "DefaultAgendaPolicy":
         return cls(agenda, d["reuse"], d["max_transitions"],
                    d["absolute_accept_thresh"],
                    d["min_accept_thresh_w_differential"],
@@ -510,7 +512,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
 
     def pick_actions(self, state: AgendaState, action_history: List[Action],
                      turns_without_progress: int) -> List[Action]:
-        actions_taken = []
+        actions_taken: List[Action] = []
         
         # Action map - maps states to a list of tuples of:
         # (action_name, function, arguments, 
@@ -588,30 +590,30 @@ class Agenda:
     """
 
     def __init__(self, name: str,
-                 policy_cls=DefaultAgendaPolicy,
-                 state_probabilities_cls=DefaultStateProbabilities,
-                 trigger_probabilities_cls=DefaultTriggerProbabilities) -> None:
+                 policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
+                 state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
+                 trigger_probabilities_cls: Type[TriggerProbabilities] = DefaultTriggerProbabilities) -> None:
         self._name = name
         self._policy = policy_cls(self)
         self._trigger_probabilities_cls = trigger_probabilities_cls
         self._state_probabilities_cls = state_probabilities_cls
         # Setting everything else empty to begin with
-        self._states = {}
-        self._transition_triggers = {}
-        self._kickoff_triggers = {}
-        self._transitions = {}
-        self._start_state_name = None
-        self._terminus_names = []
-        self._actions = {}
-        self._action_map = {}
-        self._stall_action_map = {}
+        self._states: Dict[str, State] = {}
+        self._transition_triggers: Dict[str, Trigger] = {}
+        self._kickoff_triggers: Dict[str, Trigger] = {}
+        self._transitions: Dict[str, Dict[str, str]] = {}
+        self._start_state_name: Optional[str] = None
+        self._terminus_names: List[str] = []
+        self._actions: Dict[str, Action] = {}
+        self._action_map: Dict[str, List[str]] = {}
+        self._stall_action_map: Dict[str, List[str]] = {}
         # Do we want to store trigger detectors somewhere else?
         # Separate domain (graph + actions(?)) from detection and policy logic?
-        self._kickoff_trigger_detectors = []
-        self._transition_trigger_detectors = []
+        self._kickoff_trigger_detectors: List[TriggerDetector] = []
+        self._transition_trigger_detectors: List[TriggerDetector] = []
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @property
@@ -642,25 +644,28 @@ class Agenda:
         return self._actions[action_name]
 
     @property
-    def action_map(self) -> Mapping[str, List[str]]:
+    def action_map(self) -> Dict[str, List[str]]:
         # TODO Replace this method with per-state lookup
         return self._action_map
 
     @property
-    def stall_action_map(self) -> Mapping[str, List[str]]:
+    def stall_action_map(self) -> Dict[str, List[str]]:
         # TODO Replace this method with per-state lookup
         return self._stall_action_map
 
     @property
     def start_state(self) -> State:
-        return self._states[self._start_state_name]
+        if self._start_state_name is not None:
+            return self._states[self._start_state_name]
+        else:
+            raise Exception("Start state name undefined.")
 
     @property
     def terminus_states(self) -> List[State]:
         return [self._states[s] for s in self._terminus_names]
 
     @property
-    def terminus_names(self) -> List[State]:
+    def terminus_names(self) -> List[str]:
         return list(self._terminus_names)
 
     def transition_trigger_names(self, state_name: str) -> List[str]:
@@ -688,8 +693,8 @@ class Agenda:
     def transition_trigger_detectors(self) -> List[TriggerDetector]:
         return list(self._transition_trigger_detectors)
 
-    def to_dict(self) -> Mapping[str, Any]:
-        def to_dict(x):
+    def to_dict(self) -> Dict[str, Any]:
+        def to_dict(x: Any) -> Any:
             if isinstance(x, str):
                 return x
             elif isinstance(x, int):
@@ -716,9 +721,9 @@ class Agenda:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any],
-                  policy_cls,
-                  state_probabilities_cls,
-                  trigger_probabilities_cls) -> "Agenda":
+                  policy_cls: Type[AgendaPolicy],
+                  state_probabilities_cls: Type[StateProbabilities],
+                  trigger_probabilities_cls: Type[TriggerProbabilities]) -> "Agenda":
         obj = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
                   trigger_probabilities_cls=trigger_probabilities_cls)
         # Special handling of policy
@@ -730,7 +735,7 @@ class Agenda:
             setattr(obj, "_" + name, value)
 
         # Replace with objects, where appropriate.
-        def from_dict(dict_list, new_cls):
+        def from_dict(dict_list: List[Dict[str, Any]], new_cls: Type[object]) -> Dict[str, Any]:
             obj_dict = {}
             for dd in dict_list:
                 new_obj = new_cls.from_dict(dd)
@@ -742,51 +747,51 @@ class Agenda:
         obj._actions = from_dict(obj._actions, Action)
         return obj
 
-    def add_state(self, state: State):
+    def add_state(self, state: State) -> None:
         self._states[state.name] = state
         self._action_map[state.name] = []
         self._stall_action_map[state.name] = []
         self._transitions[state.name] = {}
 
-    def set_start_state(self, state_name: str):
+    def set_start_state(self, state_name: str) -> None:
         self._start_state_name = state_name
 
-    def add_terminus(self, state_name: str):
+    def add_terminus(self, state_name: str) -> None:
         self._terminus_names.append(state_name)
 
-    def add_transition_trigger(self, trigger: Trigger):
+    def add_transition_trigger(self, trigger: Trigger) -> None:
         self._transition_triggers[trigger.name] = trigger
 
-    def add_kickoff_trigger(self, trigger: Trigger):
+    def add_kickoff_trigger(self, trigger: Trigger) -> None:
         self._kickoff_triggers[trigger.name] = trigger
 
-    def add_transition(self, start_state_name: str, trigger_name: str, end_state_name: str):
+    def add_transition(self, start_state_name: str, trigger_name: str, end_state_name: str) -> None:
         self._transitions[start_state_name][trigger_name] = end_state_name
     
     def add_action_for_state(self, action: Action, state_name: str) -> None:
         self._actions[action.name] = action
         self._action_map[state_name].append(action.name)
     
-    def add_stall_action_for_state(self, action: Action, state_name: str):
+    def add_stall_action_for_state(self, action: Action, state_name: str) -> None:
         self._actions[action.name] = action
         self._stall_action_map[state_name].append(action.name)
 
-    def add_transition_trigger_detector(self, trigger_detector: TriggerDetector):
+    def add_transition_trigger_detector(self, trigger_detector: TriggerDetector) -> None:
         self._transition_trigger_detectors.append(trigger_detector)
 
-    def add_kickoff_trigger_detector(self, trigger_detector: TriggerDetector):
+    def add_kickoff_trigger_detector(self, trigger_detector: TriggerDetector) -> None:
         self._kickoff_trigger_detectors.append(trigger_detector)
 
-    def store(self, filename: str):
+    def store(self, filename: str) -> None:
         with open(filename, "w") as file:
             yaml.dump(self.to_dict(), file, default_flow_style=False, sort_keys=False)
 
     @classmethod
     def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
              snips_multi_engine: bool = False,
-             policy_cls=DefaultAgendaPolicy,
-             state_probabilities_cls=DefaultStateProbabilities,
-             trigger_probabilities_cls=DefaultTriggerProbabilities) -> "Agenda":
+             policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
+             state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
+             trigger_probabilities_cls: Type[TriggerProbabilities] = DefaultTriggerProbabilities) -> "Agenda":
         """Load an agenda from file.
 
         The policy class provided must be consistent with the policy parameters given in the file, i.e., it is the

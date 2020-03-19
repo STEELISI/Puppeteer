@@ -1,6 +1,6 @@
 import abc
 import os
-from typing import List, Mapping, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from extractions import Extractions
 from nlu import SnipsEngine, SpacyEngine
@@ -19,14 +19,14 @@ class TriggerDetector(abc.ABC):
     def trigger_names(self) -> List[str]:
         raise NotImplementedError()
 
-    def load(self):
+    def load(self) -> None:
         # Default is that detectors don't need loading.
         pass
         
     @abc.abstractmethod
     # TODO Use TriggerProbabilities as output?
     def trigger_probabilities(self, observations: List[Observation],
-                              old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
+                              old_extractions: Extractions) -> Tuple[Dict[str, float], float, Extractions]:
         raise NotImplementedError()
 
 
@@ -35,12 +35,12 @@ class SnipsTriggerDetector(TriggerDetector):
     # A trigger detector using one or more Snips engines to detect triggers in
     # observations.
 
-    def __init__(self, paths: List[str], nlp, multi_engine=False):
+    def __init__(self, paths: List[str], nlp: SpacyEngine, multi_engine: bool = False) -> None:
         # TODO Is there a Snips convention for how to store its training data?
-        self._engines = []
-        self._trigger_names = []
+        self._engines: List[SnipsEngine] = []
+        self._trigger_names: List[str] = []
         self._nlp = nlp
-        self._paths_list = []
+        self._paths_list: List[List[str]] = []
         
         # Prepare creation of our Snips engine or engines.
         if multi_engine:
@@ -48,7 +48,7 @@ class SnipsTriggerDetector(TriggerDetector):
         else:
             self._paths_list = [paths]
     
-    def load(self):
+    def load(self) -> None:
         for paths in self._paths_list:
             engine = SnipsEngine.load(paths, self._nlp)
             self._engines.append(engine)
@@ -59,14 +59,14 @@ class SnipsTriggerDetector(TriggerDetector):
         return self._trigger_names
 
     def trigger_probabilities(self, observations: List[Observation],
-                              old_extractions: Extractions) -> Tuple[Mapping[str, float], float, Extractions]:
+                              old_extractions: Extractions) -> Tuple[Dict[str, float], float, Extractions]:
         texts = []
         for observation in observations:
             if isinstance(observation, MessageObservation):
                 texts.append(observation.text)
         text = "\n".join(texts)
 
-        trigger_map = {}
+        trigger_map: Dict[str, float] = {}
         for engine in self._engines:
             snips_results = engine.detect(text)
                         
@@ -89,28 +89,30 @@ class SnipsTriggerDetector(TriggerDetector):
 class TriggerDetectorLoader:
     """Class loading trigger detectors from disk."""
     # TODO Have abstract superclass and let this be DefaultTriggerDetectorLoader?
-    def __init__(self, default_snips_path=None):
+    def __init__(self, default_snips_path: str = None) -> None:
         self._default_snips_path = default_snips_path
-        self._snips_paths = {}
-        self._registered = {}
-        self._registered_by_agenda = {}
+        self._snips_paths: Dict[str, str] = {}
+        self._registered: Dict[str, TriggerDetector] = {}
+        self._registered_by_agenda: Dict[str, Dict[str, TriggerDetector]] = {}
     
     # What to register? Class? Needs to allow parameters -- best to register
     # detectors, but have load method in trigger that loads it when needed.
-    def register_detector(self, detector: TriggerDetector):
+    def register_detector(self, detector: TriggerDetector) -> None:
         for trigger_name in detector.trigger_names:
             self._registered[trigger_name] = detector
     
-    def register_detector_for_agenda(self, agenda_name: str, detector: TriggerDetector):
+    def register_detector_for_agenda(self, agenda_name: str, detector: TriggerDetector) -> None:
         if agenda_name not in self._registered_by_agenda:
             self._registered_by_agenda[agenda_name] = {}
         for trigger_name in detector.trigger_names:
             self._registered_by_agenda[agenda_name][trigger_name] = detector
     
-    def register_snips_path_for_agenda(self, agenda_name: str, snips_path: str):
+    def register_snips_path_for_agenda(self, agenda_name: str, snips_path: str) -> None:
         self._snips_paths[agenda_name] = snips_path
     
-    def load(self, agenda_name: str, trigger_names: List[str], snips_multi_engine=False) -> List[TriggerDetector]:
+    def load(self, agenda_name: str,
+             trigger_names: List[str],
+             snips_multi_engine: bool = False) -> List[TriggerDetector]:
         detectors = []
         snips_trigger_paths = []
         for trigger_name in trigger_names:
@@ -125,7 +127,7 @@ class TriggerDetectorLoader:
                 detectors.append(detector)
             else:
                 # See if this is a standard Snips trigger.
-                def lookfor(dirname, rootpath):
+                def lookfor(dirname: str, rootpath: str) -> Optional[str]:
                     for (root, dirs, files) in os.walk(rootpath):
                         if dirname in dirs:
                             return os.path.join(root, dirname)

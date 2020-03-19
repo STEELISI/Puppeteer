@@ -1,5 +1,5 @@
 import abc
-from typing import List, Mapping, Tuple
+from typing import List, Dict, Tuple, Type
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,8 +24,11 @@ class PuppeteerPolicy(abc.ABC):
     is tied to a specific conversation, and may hold conversation-specific state.
     """
 
+    def __init__(self, agendas: List[Agenda]) -> None:
+        self._agendas = agendas
+
     @abc.abstractmethod
-    def act(self, agenda_states: Mapping[str, AgendaState]) -> List[Action]:
+    def act(self, agenda_states: Dict[str, AgendaState]) -> List[Action]:
         """"Picks zero or more appropriate actions to take, given the current state of the conversation.
 
         Args:
@@ -39,7 +42,7 @@ class PuppeteerPolicy(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def plot_state(self, fig, agenda_states):
+    def plot_state(self, fig: plt.Figure, agenda_states: Dict[str, AgendaState]) -> None:
         raise NotImplementedError()
 
 
@@ -49,15 +52,15 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
     This is the default PuppeteerPolicy implementation. See PuppeteerPolicy documentation for further details.
     """
     
-    def __init__(self, agendas: List[Agenda]):
-        self._agendas = agendas
+    def __init__(self, agendas: List[Agenda]) -> None:
+        super(DefaultPuppeteerPolicy, self).__init__(agendas)
         # State
         self._current_agenda = None
         self._turns_without_progress = {a.name: 0 for a in agendas}
         self._times_made_current = {a.name: 0 for a in agendas}
-        self._action_history = {a.name: [] for a in agendas}
+        self._action_history: Dict[str, List[Action]] = {a.name: [] for a in agendas}
         
-    def _deactivate_agenda(self, agenda_name: str):
+    def _deactivate_agenda(self, agenda_name: str) -> None:
         # TODO Turducken currently keeps the history when an agenda is
         # deactivated. Can lead to avoiding states with few actions when an
         # agenda is re-run.
@@ -65,14 +68,14 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
         # self._action_history[agenda_name] = []
         pass
 
-    def act(self, agenda_states: Mapping[str, AgendaState]) -> List[Action]:
+    def act(self, agenda_states: Dict[str, AgendaState]) -> List[Action]:
         """"Picks zero or more appropriate actions to take, given the current state of the conversation.
 
         See documentation of this method in PuppeteerPolicy.
         """
         agenda = self._current_agenda
         last_agenda = None
-        actions = []
+        actions: List[Action] = []
 
         if agenda is not None:
             agenda_state = agenda_states[agenda.name]
@@ -160,7 +163,7 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
         # and failed to kick off a new agenda. We have nothing.
         return actions
 
-    def plot_state(self, fig, agenda_states):
+    def plot_state(self, fig: plt.Figure, agenda_states: Dict[str, AgendaState]) -> None:
         plt.figure(fig.number)
         plt.clf()
         if self._current_agenda is None:
@@ -211,10 +214,12 @@ class Puppeteer:
         4. The surrounding implementation takes the Puppeteer's action, and realizes them, typically providing some kind
            of reply to the other party.
     """
-    def __init__(self, agendas: List[Agenda], policy_cls=DefaultPuppeteerPolicy, plot_state=False):
+    def __init__(self, agendas: List[Agenda],
+                 policy_cls: Type[PuppeteerPolicy] = DefaultPuppeteerPolicy,
+                 plot_state: bool = False) -> None:
         self._agendas = agendas
         self._agenda_states = {a.name: AgendaState(a) for a in agendas}
-        self._last_actions = []
+        self._last_actions: List[Action] = []
         self._policy = policy_cls(agendas)
         if plot_state:
             self._fig = plt.figure()
