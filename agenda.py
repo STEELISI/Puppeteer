@@ -11,7 +11,7 @@ from trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
 class AgendaAttribute(abc.ABC):
-
+    """Abstract class for attributes of an agenda, such as states, triggers and actions."""
     def __init__(self, name: str) -> None:
         self._name = name
 
@@ -49,7 +49,16 @@ class State(AgendaAttribute):
 
 
 class Trigger(AgendaAttribute):
-    """Class naming and describing a trigger in an agenda."""
+    """Class naming and describing a trigger in an agenda.
+    
+    A trigger is an event that can be detected, and that triggers some effect in the agenda, either a state transition
+    or making agenda kickoff possible. This class is used by Agenda to declare the trigger, i.e., it represents the
+    fact that the agenda has a trigger with a certain name, and provides a textual description of how the trigger is
+    interpreted.
+    
+    The detection of when a trigger occurs is delegated to the TriggerDetector class. TriggerDetectors are registered
+    in the Agenda, specifying, by trigger name, which of the agenda's triggers they are detecting.
+    """
 
     def __init__(self, name: str, description: str = "") -> None:
         super(Trigger, self).__init__(name)

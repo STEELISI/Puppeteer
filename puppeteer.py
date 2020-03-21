@@ -197,7 +197,7 @@ class Puppeteer:
         specific and limited goal, e.g., getting to know the name of the other party. A Puppeteer's conversational
         abilities are thus defined by the collective abilities of the Agendas it can use.
     - PuppeteerPolicy: A PuppeteerPolicy is responsible for picking an agenda to use based on the conversational state,
-        switching between agendas when appropriate. The choice of policy can be made thorugh the Puppeteer's
+        switching between agendas when appropriate. The choice of policy can be made through the Puppeteer's
         constructor, with the DefaultPuppeteerPolicy class as the default choice if no other class is specified.
 
     Architecturally, the Puppeteer is implemented much as a general agent, getting information about the world through
