@@ -24,22 +24,31 @@ class Extractions:
     handling extractions between turns.
     """
     def __init__(self) -> None:
+        """Creates an empty set of extractions."""
         self._extractions: Dict[str, Any] = {}
 
     def __repr__(self) -> str:
         return repr(self._extractions)
 
     def add_extraction(self, name: str, value: Any) -> None:
-        # TODO What if already present?
+        """Adds an extraction.
+
+        Updates the extraction if there was an extraction already set for the name.
+        """
         self._extractions[name] = value
 
     def remove_extraction(self, name: str) -> None:
-        # TODO What if not present?
-        del self._extractions[name]
+        """Removes an extraction, if present."""
+        if name in self._extractions:
+            del self._extractions[name]
 
     def update(self, extractions: "Extractions") -> None:
-        # TODO What if already present?
+        """Updates these extractions
+
+        Uses extraction from argument if there are duplicate names.
+        """
         self._extractions.update(extractions._extractions)
 
     def has_extraction(self, name: str) -> bool:
+        """Returns true if this object has an extraction with the given name."""
         return name in self._extractions

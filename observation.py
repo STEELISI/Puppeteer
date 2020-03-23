@@ -1,5 +1,5 @@
 import abc
-from typing import List
+from typing import Set
 
 
 class Observation(abc.ABC):
@@ -20,7 +20,7 @@ class MessageObservation(Observation):
 
     def __init__(self, text: str) -> None:
         self._text = text
-        self._intents: List[str] = []
+        self._intents: Set[str] = set()
     
     @property
     def text(self) -> str:
@@ -30,4 +30,4 @@ class MessageObservation(Observation):
         return intent in self._intents
 
     def add_intent(self, intent: str) -> None:
-        return self._intents.append(intent)
+        self._intents.add(intent)

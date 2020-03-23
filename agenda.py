@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -10,9 +10,23 @@ from observation import Observation
 from trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
+def _check_dict_fields(cls, d: Dict[str, Any], fields: List[Tuple[str, Type]]) -> None:
+    for (name, typ) in fields:
+        if name not in d:
+            raise ValueError("Missing field for %s: %s" % (cls.__name__, name))
+        elif not isinstance(d[name], typ):
+            raise TypeError("Field %s for %s should be of type %s, but got %s" % (name, cls.__name__, typ.__name__,
+                                                                                  type(d["name"]).__name__))
+    unexpected = frozenset(d).difference(list(zip(*fields))[0])
+    if unexpected:
+        raise ValueError("Unexpected field(s) for %s: %s" % (cls.__name__, unexpected))
+
+
 class AgendaAttribute(abc.ABC):
     """Abstract class for attributes of an agenda, such as states, triggers and actions."""
     def __init__(self, name: str) -> None:
+        if not name:
+            raise ValueError("Name must be non-empty")
         self._name = name
 
     @property
@@ -21,11 +35,13 @@ class AgendaAttribute(abc.ABC):
 
     @abc.abstractmethod
     def to_dict(self) -> Dict[str, str]:
+        """Returns a dictionary representation of this object."""
         raise NotImplementedError()
 
     @classmethod
     @abc.abstractmethod
     def from_dict(cls, d: Dict[str, Any]) -> "AgendaAttribute":
+        """Returns a new object, based on its dictionary representation."""
         raise NotImplementedError()
 
 
@@ -45,6 +61,7 @@ class State(AgendaAttribute):
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "State":
+        _check_dict_fields(cls, d, [("name", str), ("description", str)])
         return cls(d["name"], d["description"])
 
 
@@ -73,6 +90,7 @@ class Trigger(AgendaAttribute):
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Trigger":
+        _check_dict_fields(cls, d, [("name", str), ("description", str)])
         return cls(d["name"], d["description"])
 
 
@@ -90,6 +108,8 @@ class Action(AgendaAttribute):
         super(Action, self).__init__(name)
         self._text = text
         self._exclusive_flag = exclusive_flag
+        if allowed_repeats < 1:
+            raise ValueError("Allowed number of repeats must be positive, got %d" % allowed_repeats)
         self._allowed_repeats = allowed_repeats
     
     def __repr__(self) -> str:
@@ -116,6 +136,7 @@ class Action(AgendaAttribute):
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Action":
+        _check_dict_fields(cls, d, [("name", str), ("text", str), ("exclusive_flag", bool), ("allowed_repeats", int)])
         return cls(d["name"], d["text"], d["exclusive_flag"], d["allowed_repeats"])
 
 
@@ -461,7 +482,30 @@ class AgendaPolicy(abc.ABC):
 class DefaultAgendaPolicy(AgendaPolicy):
     """Handles agenda-level decisions about behavior.
 
-    This is the default AgendaPolicy implementation. See AgendaPolicy documentation for further details.
+    This is the default AgendaPolicy implementation.
+
+    The policy is controlled by the following parameters:
+    - absolute_accept_thresh:
+        If we reach an acceptance state with more than this confidence, we are done.
+    - min_accept_thresh_w_differential:
+        The min threshold for considering confidence we've reached a terminus. If we update the state machine often, our
+        confidence prob in each state can get diffused across multiple states over long input sequences. So if we are
+        accept_thresh_differential more likely than other states, and above min_accept_thresh_w_differential, we
+        consider ourselves done.
+    - accept_thresh_differential:
+        The relative threshold between a candidate terminus and the next likely state. Probabilities "bleed out" over
+        multiple transitions (e.g., the longer the input sequences, the more likely we'll get confidence/probability
+        spread across multiple states), so relative probabilities are important.
+    - kickoff_thresh:
+        If we have an kickoff trigger with at least this confidence, we consider the kickoff condition triggered.
+
+    The following two parameters are included in the class, but not currently in use by the policy:
+    - reuse
+        True if we can keep using this agenda in the same conversation.
+    - max_transitions
+        Max number of times we have triggering conditions before giving up on reaching a terminus.
+
+    See AgendaPolicy documentation for further details.
     """
 
     def __init__(self,
@@ -474,11 +518,24 @@ class DefaultAgendaPolicy(AgendaPolicy):
                  # TODO Convention right now: Have to be sure of kickoff.
                  kickoff_thresh: float = 1.0) -> None:
         super(DefaultAgendaPolicy, self).__init__(agenda)
-        self._reuse = reuse                        # TODO When to use?
-        self._max_transitions = max_transitions    # TODO When to use?
+        # TODO The reuse field in currently unused. Not used by turducken
+        self._reuse = reuse
+        if max_transitions < 1:
+            raise ValueError("max_transitions must be positive, got %d" % max_transitions)
+        # TODO The max_transitions field in currently unused. Not used by turducken
+        self._max_transitions = max_transitions
+        if absolute_accept_thresh <= 0.0:
+            raise ValueError("absolute_accept_thresh must be positive, got %f" % absolute_accept_thresh)
         self._absolute_accept_thresh = absolute_accept_thresh
+        if min_accept_thresh_w_differential <= 0.0:
+            raise ValueError("min_accept_thresh_w_differential must be positive, got %f" %
+                             min_accept_thresh_w_differential)
         self._min_accept_thresh_w_differential = min_accept_thresh_w_differential
+        if accept_thresh_differential <= 0.0:
+            raise ValueError("accept_thresh_differential must be positive, got %f" % accept_thresh_differential)
         self._accept_thresh_differential = accept_thresh_differential
+        if kickoff_thresh <= 0.0:
+            raise ValueError("kickoff_thresh must be positive, got %f" % kickoff_thresh)
         self._kickoff_thresh = kickoff_thresh
 
     def to_dict(self) -> Dict[str, Any]:
@@ -490,6 +547,9 @@ class DefaultAgendaPolicy(AgendaPolicy):
     
     @classmethod
     def from_dict(cls, d: Dict[str, Any], agenda: "Agenda") -> "DefaultAgendaPolicy":
+        _check_dict_fields(cls, d, [("reuse", bool), ("max_transitions", int), ("absolute_accept_thresh", float),
+                                    ("min_accept_thresh_w_differential", float), ("accept_thresh_differential", float),
+                                    ("kickoff_thresh", float)])
         return cls(agenda, d["reuse"], d["max_transitions"],
                    d["absolute_accept_thresh"],
                    d["min_accept_thresh_w_differential"],
@@ -543,7 +603,8 @@ class DefaultAgendaPolicy(AgendaPolicy):
         # actions we are allowed to given repeat allowance & exclusivity.
         # for state by decreasing probabilities that we're in that state:
         done = False
-        for st in {k: v for k, v in sorted(state.state_probabilities.probabilities.items(), key=lambda item: item[1], reverse=True)}:
+        for st in {k: v for k, v in sorted(state.state_probabilities.probabilities.items(), key=lambda item: item[1],
+                                           reverse=True)}:
             # XXX Maybe need to check likelihood.
             if st in action_map:
                 for action_name in action_map[st]:
@@ -623,8 +684,6 @@ class Agenda:
         self._actions: Dict[str, Action] = {}
         self._action_map: Dict[str, List[str]] = {}
         self._stall_action_map: Dict[str, List[str]] = {}
-        # Do we want to store trigger detectors somewhere else?
-        # Separate domain (graph + actions(?)) from detection and policy logic?
         self._kickoff_trigger_detectors: List[TriggerDetector] = []
         self._transition_trigger_detectors: List[TriggerDetector] = []
 
@@ -657,17 +716,19 @@ class Agenda:
         return list(self._actions.values())
 
     def action(self, action_name: str) -> Action:
+        if action_name not in self._actions:
+            raise ValueError("No action with name '%s'" % action_name)
         return self._actions[action_name]
 
     @property
     def action_map(self) -> Dict[str, List[str]]:
         # TODO Replace this method with per-state lookup
-        return self._action_map
+        return dict(self._action_map)
 
     @property
     def stall_action_map(self) -> Dict[str, List[str]]:
         # TODO Replace this method with per-state lookup
-        return self._stall_action_map
+        return dict(self._stall_action_map)
 
     @property
     def start_state(self) -> State:
@@ -685,12 +746,20 @@ class Agenda:
         return list(self._terminus_names)
 
     def transition_trigger_names(self, state_name: str) -> List[str]:
+        if state_name not in self._transitions:
+            raise ValueError("No state with name '%s'" % state_name)
         return list(self._transitions[state_name].keys())
 
     def transition_end_state_name(self, state_name: str, trigger_name: str) -> str:
+        if state_name not in self._transitions:
+            raise ValueError("No state with name '%s'" % state_name)
+        elif trigger_name not in self._transitions[state_name]:
+            raise ValueError("No trigger with name '%s' for state '%s'" % (trigger_name, state_name))
         return self._transitions[state_name][trigger_name]
 
     def transition_connected_state_names(self, state_name: str) -> List[str]:
+        if state_name not in self._transitions:
+            raise ValueError("No state with name '%s'" % state_name)
         return list(set(self._transitions[state_name].values()))
 
     @property
@@ -709,7 +778,7 @@ class Agenda:
     def transition_trigger_detectors(self) -> List[TriggerDetector]:
         return list(self._transition_trigger_detectors)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _to_dict(self) -> Dict[str, Any]:
         def to_dict(x: Any) -> Any:
             if isinstance(x, str):
                 return x
@@ -736,61 +805,138 @@ class Agenda:
         return d
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any],
-                  policy_cls: Type[AgendaPolicy],
-                  state_probabilities_cls: Type[StateProbabilities],
-                  trigger_probabilities_cls: Type[TriggerProbabilities]) -> "Agenda":
+    def _from_dict(cls, d: Dict[str, Any],
+                   policy_cls: Type[AgendaPolicy],
+                   state_probabilities_cls: Type[StateProbabilities],
+                   trigger_probabilities_cls: Type[TriggerProbabilities]) -> "Agenda":
         # Replace with objects in d, where appropriate.
-        def from_dict(dict_list: List[Dict[str, Any]], new_cls: Type[AgendaAttribute]) -> Dict[str, Any]:
+        def from_dict_list(dict_list: List[Dict[str, Any]], new_cls: Type[AgendaAttribute]) -> Dict[str, Any]:
+            if not isinstance(dict_list, list):
+                raise TypeError("Expected list of dicts for class %s" % new_cls.__name__)
             obj_dict = {}
             for dd in dict_list:
+                if not isinstance(dd, dict):
+                    raise TypeError("Expected list of dicts for class %s" % new_cls.__name__)
                 new_obj = new_cls.from_dict(dd)
                 obj_dict[new_obj.name] = new_obj
             return obj_dict
-        d["states"] = from_dict(d["states"], State)
-        d["kickoff_triggers"] = from_dict(d["kickoff_triggers"], Trigger)
-        d["transition_triggers"] = from_dict(d["transition_triggers"], Trigger)
-        d["actions"] = from_dict(d["actions"], Action)
+        _check_dict_fields(Agenda, d, [("states", object), ("kickoff_triggers", object),
+                                       ("transition_triggers", object), ("actions", object), ("policy", object),
+                                       ("name", str), ("start_state_name", str), ("terminus_names", list),
+                                       ("transitions", dict), ("action_map", dict), ("stall_action_map", dict)])
+        states = from_dict_list(d["states"], State)
+        kickoff_triggers = from_dict_list(d["kickoff_triggers"], Trigger)
+        transition_triggers = from_dict_list(d["transition_triggers"], Trigger)
+        actions = from_dict_list(d["actions"], Action)
 
-        obj = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
-                  trigger_probabilities_cls=trigger_probabilities_cls)
+        agenda = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
+                     trigger_probabilities_cls=trigger_probabilities_cls)
         # Special handling of policy
-        d_policy = d["policy"]
-        del d["policy"]
-        # Restore all fields, as stored in dict
-        for (name, value) in d.items():
-            setattr(obj, "_" + name, value)
-        obj._policy = policy_cls.from_dict(d_policy, obj)
-        return obj
+        agenda._policy = policy_cls.from_dict(d["policy"], agenda)
+        # Restore all other fields, as stored in dict
+        for state in states.values():
+            agenda.add_state(state)
+        agenda.set_start_state(d["start_state_name"])
+        for trigger in kickoff_triggers.values():
+            agenda.add_kickoff_trigger(trigger)
+        for trigger in transition_triggers.values():
+            agenda.add_transition_trigger(trigger)
+        for action in actions.values():
+            agenda.add_action(action)
+        for name in d["terminus_names"]:
+            if not isinstance(name, str):
+                raise TypeError("Expected string for terminus name, got: %s" % type(name))
+            agenda.add_terminus(name)
+        for start_state_name in d["transitions"]:
+            if not isinstance(start_state_name, str):
+                raise TypeError("Expected string for start state name for transition, got: %s" % type(start_state_name))
+            for trigger_name in d["transitions"][start_state_name]:
+                if not isinstance(trigger_name, str):
+                    raise TypeError("Expected string for trigger name for transition, got: %s" % type(trigger_name))
+                end_state_name = d["transitions"][start_state_name][trigger_name]
+                if not isinstance(end_state_name, str):
+                    raise TypeError("Expected string for end state name for transition, got: %s" % type(end_state_name))
+                agenda.add_transition(start_state_name, trigger_name, end_state_name)
+        for state_name in d["action_map"]:
+            if not isinstance(state_name, str):
+                raise TypeError("Expected string for state name for action map, got: %s" % type(state_name))
+            for action_name in d["action_map"][state_name]:
+                if not isinstance(action_name, str):
+                    raise TypeError("Expected string for action name for action map, got: %s" % type(action_name))
+                agenda.add_action_for_state(action_name, state_name)
+        for state_name in d["stall_action_map"]:
+            if not isinstance(state_name, str):
+                raise TypeError("Expected string for state name for stall action map, got: %s" % type(state_name))
+            for action_name in d["stall_action_map"][state_name]:
+                if not isinstance(action_name, str):
+                    raise TypeError("Expected string for stall action name for action map, got: %s" % type(action_name))
+                agenda.add_stall_action_for_state(action_name, state_name)
+        return agenda
 
     def add_state(self, state: State) -> None:
+        if state.name in self._states:
+            raise ValueError("Agenda already has a state with name '%s'" % state.name)
         self._states[state.name] = state
         self._action_map[state.name] = []
         self._stall_action_map[state.name] = []
         self._transitions[state.name] = {}
 
     def set_start_state(self, state_name: str) -> None:
+        if state_name not in self._states:
+            raise ValueError("Invalid start state, no state with name '%s'" % state_name)
         self._start_state_name = state_name
 
     def add_terminus(self, state_name: str) -> None:
+        if state_name not in self._states:
+            raise ValueError("Invalid terminus state, no state with name '%s'" % state_name)
+        elif state_name in self._terminus_names:
+            raise ValueError("Terminus state already set: '%s'" % state_name)
         self._terminus_names.append(state_name)
 
     def add_transition_trigger(self, trigger: Trigger) -> None:
+        if trigger.name in self._transition_triggers:
+            raise ValueError("Agenda already has a transition trigger with name '%s'" % trigger.name)
         self._transition_triggers[trigger.name] = trigger
 
     def add_kickoff_trigger(self, trigger: Trigger) -> None:
+        if trigger.name in self._kickoff_triggers:
+            raise ValueError("Agenda already has a kickoff trigger with name '%s'" % trigger.name)
         self._kickoff_triggers[trigger.name] = trigger
 
     def add_transition(self, start_state_name: str, trigger_name: str, end_state_name: str) -> None:
+        if start_state_name not in self._transitions:
+            raise ValueError("Invalid start state for transition, no state with name '%s'" % start_state_name)
+        elif trigger_name not in self._transition_triggers:
+            raise ValueError("Invalid trigger for transition, no transition trigger with name '%s'" % trigger_name)
+        elif end_state_name not in self._states:
+            raise ValueError("Invalid end state for transition, no state with name '%s'" % end_state_name)
+        elif trigger_name in self._transitions[start_state_name]:
+            raise ValueError("End state for transition, from state '%s' already set for trigger '%s'" %
+                             (start_state_name, trigger_name))
         self._transitions[start_state_name][trigger_name] = end_state_name
     
-    def add_action_for_state(self, action: Action, state_name: str) -> None:
+    def add_action(self, action: Action) -> None:
+        if action.name in self._actions:
+            raise ValueError("Agenda already has an action with name '%s'" % action.name)
         self._actions[action.name] = action
-        self._action_map[state_name].append(action.name)
+
+    def add_action_for_state(self, action_name: str, state_name: str) -> None:
+        if action_name not in self._actions:
+            raise ValueError("Agenda has no action with name '%s'" % action_name)
+        elif state_name not in self._states:
+            raise ValueError("Invalid state for action, no state with name '%s'" % state_name)
+        elif action_name in self._action_map[state_name]:
+            raise ValueError("State '%s' already has action with name '%s'" % (state_name, action_name))
+        self._action_map[state_name].append(action_name)
     
-    def add_stall_action_for_state(self, action: Action, state_name: str) -> None:
-        self._actions[action.name] = action
-        self._stall_action_map[state_name].append(action.name)
+    def add_stall_action_for_state(self, action_name: str, state_name: str) -> None:
+        if action_name not in self._actions:
+            raise ValueError("Agenda has no action with name '%s'" % action_name)
+        elif state_name not in self._states:
+            raise ValueError("Invalid state for stall action, no state with name '%s'" % state_name)
+        elif action_name in self._stall_action_map[state_name]:
+            raise ValueError("State '%s' already has stall action with name '%s'" % (state_name, action_name))
+        self._stall_action_map[state_name].append(action_name)
 
     def add_transition_trigger_detector(self, trigger_detector: TriggerDetector) -> None:
         self._transition_trigger_detectors.append(trigger_detector)
@@ -800,7 +946,7 @@ class Agenda:
 
     def store(self, filename: str) -> None:
         with open(filename, "w") as file:
-            yaml.dump(self.to_dict(), file, default_flow_style=False, sort_keys=False)
+            yaml.dump(self._to_dict(), file, default_flow_style=False, sort_keys=False)
 
     @classmethod
     def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
@@ -819,7 +965,7 @@ class Agenda:
         """
         with open(filename, "r") as file:
             d = yaml.load(file)
-        agenda = cls.from_dict(d, policy_cls, state_probabilities_cls, trigger_probabilities_cls)
+        agenda = cls._from_dict(d, policy_cls, state_probabilities_cls, trigger_probabilities_cls)
         # Load trigger detectors
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
