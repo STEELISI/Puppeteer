@@ -180,7 +180,7 @@ class TriggerDetectorLoader:
     detection. The load() method makes sure that this takes place, by calling the load() method on any TriggerDetector
     object that it returns.
     """
-    def __init__(self, default_snips_path: str = None) -> None:
+    def __init__(self, default_snips_path: Optional[str] = None) -> None:
         self._default_snips_path = default_snips_path
         self._snips_paths: Dict[str, str] = {}
         self._registered: Dict[str, TriggerDetector] = {}

@@ -10,7 +10,7 @@ from observation import Observation
 from trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
-def _check_dict_fields(cls, d: Dict[str, Any], fields: List[Tuple[str, Type]]) -> None:
+def _check_dict_fields(cls: Type, d: Dict[str, Any], fields: List[Tuple[str, Type]]) -> None:
     for (name, typ) in fields:
         if name not in d:
             raise ValueError("Missing field for %s: %s" % (cls.__name__, name))
