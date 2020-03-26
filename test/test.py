@@ -8,20 +8,15 @@ from observation import MessageObservation
 from puppeteer import Puppeteer
 from trigger_detectors.loader import MyTriggerDetectorLoader
 
-# import get_location
-# import make_payment
-
 
 class TestConversation:
     def __init__(self, agendas: List[Agenda]):
-        
         self._puppeteer = Puppeteer(agendas, plot_state=True)
         self._extractions = Extractions()
         self._extractions.add_extraction("first_name", "Mr")
         self._extractions.add_extraction("last_name", "X")
         np.random.seed(0)
 
-    
     def say(self, text):
 
         print("-"*40)

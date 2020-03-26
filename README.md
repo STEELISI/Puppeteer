@@ -31,7 +31,7 @@ extractions = Extractions()
 
 # Main while-loop, one turn of the conversation per iteration.
 while True:
-    # Get next message from the othder party. 
+    # Get next message from the other party. 
     text = get_message()
     if text is not None:
         # Get the puppeteer's reaction to the message.
@@ -44,7 +44,7 @@ while True:
         # Perform actions selected by the puppeteer. 
         do_actions(actions)
     else:
-        # No more messges. End this conversation.
+        # No more messages. End this conversation.
         break
 ```
 
@@ -52,9 +52,9 @@ The main method used to interact with the puppeteer is the `react()` method.
 This method takes two arguments, both giving the puppeteer information about
 the state of the outside world.
 - The first argument is a list of `Observation` objects, in this case a single
-`MessageObservation` containing the latest message text from the other party.
-In general, the observations argument to `react()` gives the puppeteer
-information about things that have happened since the last turn of the
+`MessageObservation` object containing the latest message text from the other
+party. In general, the observations argument to `react()` gives the puppeteer
+information about things that have happened since the previous turn of the
 conversation, i.e., since the last time `react()` was called.
 - The second argument holds *extractions* -- key-value pairs that hold
 information about the world. This is typically long-term information that is
@@ -107,24 +107,135 @@ flag of the `Puppeteer` constructor.
 
 The part of the above example that warrants a bit of explanation is the trigger
 detector loader used when loading the agendas. To do this, we first need to
-discuss the role of *trigger detectors* in a puppeteer.
+discuss the role of *trigger detectors* in a puppeteer. This will also explain
+the `default_snips_path` argument to the `TriggerDetectorLoader` constructor.
 
 #### Trigger detectors
 
-Trigger detectors...
+The information (observations and extractions) passed to the puppeteer's
+`react()` method typically needs some interpretation before it can be used to
+guide the actions of the puppeteer. As an example, a received message text
+typically needs to undergo some kind of natural language processing (NLP)
+before its contents can be used to affect the choice of next action for the
+agenda currently being used by the puppeteer. This task is handled by *trigger
+detectors*.
 
-Snips...
+A trigger detector implements a boolean feature that can be extracted from
+the puppeteer's inputs (observations and extractions). The detector determines
+whether the feature is present or not in the inputs. The feature itself is
+called a *trigger*, and triggers are the main mechanism controlling the
+behavior of agendas.
+
+Linking of agenda triggers to trigger detectors is done by name. Agendas define
+names for the triggers they use, and trigger detectors define names for the
+triggers they detect. A trigger detector can be used for a trigger in an agenda
+if names match.  
+
+A puppeteer trigger detector will typically have some kind of textual input,
+but this is not a strict requirement. Any kind of observations and extractions
+can be used an input to a trigger detector, and each detector (implemented as a
+subclass of TriggerDetector) specifies what kinds of inputs it reacts to.
+
+##### Snips triggers
+
+The puppeteer library comes with some pre-defined trigger detectors.
+Specifically, the library comes with support for using
+[SnipsNLU](https://github.com/snipsco/snips-nlu) as an engine for trigger
+detectors, using the class `SnipsTriggerDetector`. Snips is a library for
+natural language understanding (NLU), using the *intent* of a user sentence as
+a central concept in its text analysis. The intent concept maps nicely to
+text-based puppeteer triggers, allowing us to define a Snips intent for each
+puppeteer trigger, and train Snips to do the detection. 
+
+To create a Snips-based trigger detector, all a user of the puppeteer library
+needs to do is provide training data for the underlying Snips engine. This is
+done by providing positive and negative examples of sentences where the trigger
+feature is or is not present.
 
 ## Making new agendas
 
-### Structure of an agenda
+Defining and extending puppeteer functionality is mostly done by implementing
+agendas to handle different domains of conversation. Before going into how to
+actually define an agenda, we need to take a look at the different parts that
+make up an agenda.
+
+### Parts of an agenda
+
+This is a brief overview of what an agenda looks like. For a more comprehensive
+introduction, please refer to the documentation of the code, or this
+[paper](http://???).
+
+#### State graph
+
+An agenda is mainly implemented as a state machine with discrete states. States
+represent how the agenda is going -- what has been said, how the other party is
+reacting, what information has been gained, etc. The states are represented by
+nodes in the state machine's state graph. The agenda also defines a single
+start state, and a set of terminating states, where the agendas is either
+considered to have reached its goal, or to have failed.
+
+Transitions between states are represented by directed edges in the state
+graph, and may take place as the result of receiving input to the puppeteer's
+`react()` method. Each directed edge *(u, v)* is labeled with one or more
+triggers, meaning that the transition from state *u* to state *v* will happen
+if one of the triggers is detected in the inputs.
+
+In reality, it is not always 100% clear when a state transition has happened.
+There may be several triggers happening at once, leading to different states,
+and triggers themselves may be detected with stronger or weaker confidence. For 
+this reason, when it is executed, an agenda internally holds a probability
+distribution over states, reflecting its relative beliefs in being in different
+states at the given time. Thankfully, this complication can be ignored when the
+agenda is defined. Defining states, triggers and transitions can thus be done
+using a deterministic mental model where the agenda is always in a well-defined
+state, and triggers are either "on" or "off".
+
+#### Actions
+
+Each state defines a set of actions that can be taken by the agenda in that
+state. In each turn, the current agenda will choose one or more actions from
+one of its states. An action typically defines a reply text from the puppeteer
+to the other party. Actions come in two flavors: normal actions, and *stall
+actions*. Stall action are to be used when the conversation has stalled in a
+certain state (as determined by the agenda's policy, described below), and
+normal actions in all other cases.
+
+#### Kickoff triggers
+
+Some agendas are not appropriate to run at any time in a conversation, but
+should only be used if some specific condition holds. These conditions are
+defined by the agenda as its *kickoff triggers*. Just like the *transition
+triggers* used to control transitions in the state graph, these are boolean
+features computed by trigger detectors.
+
+#### Policy
+
+Apart from the agenda behavior defined by the concepts described above,
+there are some remaining aspects of agenda behavior that need to be defined,
+among them the exact mechanism for selecting the set of next actions. These
+"remaining aspects" are collected in the agenda's *policy*.
+
+The `Agenda` class comes with a pre-defined default policy that can be
+customized by setting its parameters in an agenda's text-file specification.
+For a discussion about replacing the default policy with a custom one,
+defined by implementing a subclass of `AgendaPolicy`, refer to the final
+section of this overview, on more customizing of puppeteer behavior.
 
 ### Writing an agenda
 
+#### Agenda files
+
+#### Programmatically
+
+
 ### Writing a trigger detector
 
+#### Snips files
 
-## Customizing behavior
+#### Programmatically
+
+
+## More customizing of puppeteer behavior
 
 ### Agenda policy
 
