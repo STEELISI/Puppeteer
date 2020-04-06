@@ -143,7 +143,7 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
                 # Successfully kicked this off.
                 # Make this our current agenda.           
                 self._current_agenda = agenda
-                #self._times_made_current[agenda.name] += 1
+                self._times_made_current[agenda.name] += 1
 
                 # Do first action.
                 # TODO run_puppeteer() uses [] for the action list, not self._action_history
