@@ -1,12 +1,8 @@
 from os.path import dirname, join, realpath
 
-from nlu import SpacyEngine
-from trigger_detector import TriggerDetectorLoader
-from trigger_detectors.intent import MessageIntentTriggerDetector
-from trigger_detectors.location import (
-    CityInExtractionsTriggerDetector,
-    LocationInMessageTriggerDetector
-)
+from puppeteer import SpacyEngine, TriggerDetectorLoader
+from .intent import MessageIntentTriggerDetector
+from .location import CityInExtractionsTriggerDetector, LocationInMessageTriggerDetector
 
 
 class MyTriggerDetectorLoader(TriggerDetectorLoader):

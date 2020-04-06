@@ -1,8 +1,7 @@
 from typing import Any, List, Mapping, Tuple
 
-from extractions import Extractions
-from observation import Observation, MessageObservation
-from trigger_detector import TriggerDetector
+from puppeteer import Extractions, MessageObservation, Observation, TriggerDetector
+
 
 class MessageIntentTriggerDetector(TriggerDetector):
 

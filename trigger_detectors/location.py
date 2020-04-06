@@ -1,9 +1,13 @@
 import string
 from typing import Any, List, Mapping, Tuple
 
-from extractions import Extractions
-from observation import Observation, MessageObservation
-from trigger_detector import SnipsTriggerDetector, TriggerDetector
+from puppeteer import (
+    Extractions,
+    Observation,
+    MessageObservation,
+    SnipsTriggerDetector,
+    TriggerDetector
+)
 
 
 class LocationInMessageTriggerDetector(SnipsTriggerDetector):

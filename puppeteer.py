@@ -4,9 +4,9 @@ from typing import List, Dict, Tuple, Type
 import matplotlib.pyplot as plt
 import numpy as np
 
-from agenda import Action, Agenda, AgendaState
-from observation import Observation
-from extractions import Extractions
+from .agenda import Action, Agenda, AgendaState
+from .observation import Observation
+from .extractions import Extractions
 
 
 class PuppeteerPolicy(abc.ABC):
@@ -208,7 +208,7 @@ class Puppeteer:
     conversation is simply a series of turns, each turn having the following sequence of events:
         1. The other party acts, typically some kind of conversational action.
         2. The implementation surrounding the Puppeteer registers the actions of the other party, and possibly other
-           useful information about the world. This
+           useful information about the world.
         3. The information gathered is fed to the Puppeteer through its react() method. The Puppeteer chooses a sequence
            of actions to take based on the information.
         4. The surrounding implementation takes the Puppeteer's action, and realizes them, typically providing some kind

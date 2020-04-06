@@ -2,9 +2,9 @@ import abc
 import os
 from typing import Dict, List, Optional, Tuple
 
-from extractions import Extractions
-from nlu import SnipsEngine, SpacyEngine
-from observation import Observation, MessageObservation
+from .extractions import Extractions
+from .nlu import SnipsEngine, SpacyEngine
+from .observation import Observation, MessageObservation
 
 
 class TriggerDetector(abc.ABC):

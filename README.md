@@ -23,6 +23,8 @@ The following code shows a part of an example implementation of a message
 exchange between a puppeteer and some other party.
 
 ```python
+from puppeteer import Extractions, MessageObservation
+
 # We create a puppeteer somehow. More on this later.
 puppeteer = ...
 
@@ -88,6 +90,8 @@ actions are certainly possible.
 The following code shows an example of setting up a puppeteer.
 
 ```python
+from puppeteer import Agenda, Puppeteer, TriggerDetectorLoader
+
 # Set up trigger detector loading.
 loader = TriggerDetectorLoader(default_snips_path="path/to/my/snips/engines")
 
@@ -166,6 +170,8 @@ and specify the root path where the training data for the Snips intents is
 located.
 
 ```python
+from puppeteer import Agenda, TriggerDetectorLoader
+
 loader = TriggerDetectorLoader(default_snips_path="path/to/my/snips/engines")
 agenda = Agenda.load("my_agenda.yaml", loader)
 ```

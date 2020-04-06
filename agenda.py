@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import yaml
 
-from extractions import Extractions
-from observation import Observation
-from trigger_detector import TriggerDetector, TriggerDetectorLoader
+from .extractions import Extractions
+from .observation import Observation
+from .trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
 def _check_dict_fields(cls: Type, d: Dict[str, Any], fields: List[Tuple[str, Type]]) -> None:
