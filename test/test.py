@@ -23,6 +23,7 @@ class TestConversation:
         msg = MessageObservation(text)
         msg.add_intent("payment")
         (actions, extractions) = self._puppeteer.react([msg], self._extractions)
+        print(self._puppeteer.log)
 
         print("-"*40)
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     #tc.say("I live in Chicago.")
 
 
-assert repr(results) == "[([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([ask_for_bank_acct_d: A lot of people don't use electronic checks, but I promise it's easier], {}), ([promise_payment: Thanks!  I'll send along payment shortly, question: What location are you based out of?], {}), ([push_3: You haven't told me where you are located yet?], {}), ([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([ask_for_bank_acct_b: I always prefer to pay by electronic check, so I need your account numbers for that, question: What location are you based out of?], {}), ([], {})]"
+assert repr(results) == "[([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([ask_for_bank_acct_d: A lot of people don't use electronic checks, but I promise it's easier], {}), ([promise_payment: Thanks!  I'll send along payment shortly, question: What location are you based out of?], {}), ([push_3: You haven't told me where you are located yet?], {}), ([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([question: What location are you based out of?], {}), ([], {})]"
 
 repr(results)
 
