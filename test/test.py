@@ -25,38 +25,6 @@ class TestConversation:
         (actions, extractions) = self._puppeteer.react([msg], self._extractions)
         print(self._puppeteer.log)
 
-        print("-"*40)
-
-        if extractions._extractions:
-            print("Extractions:")
-            for (key, value) in extractions._extractions.items():
-                print("    %s: %s" % (key, value))
-        else:
-            print("No extractions")
-
-        if self._puppeteer._policy._current_agenda is None:
-            print("No current agenda")
-        else:
-            print("Current agenda: %s" % self._puppeteer._policy._current_agenda.name)
-
-        print("Agenda state probabilities")
-        for (agenda_name, agenda_states) in self._puppeteer._agenda_states.items():
-            # TODO Hacky access to state probabilities.
-            tpm = agenda_states._state_probabilities._probabilities
-            print("    %s:" % agenda_name)
-            for (state_name, p) in tpm.items():
-                print("        %s: %.3f" % (state_name, p))
-        
-        if actions:
-            print("Actions:")
-            for a in actions:
-                print("    %s" % a)
-        else:
-            print("No actions")
-
-        #print("Puppeteer policy")
-        #print("tmc", self._puppeteer._policy._times_made_current)
-        #print("twop", self._puppeteer._policy._turns_without_progress)
         return (actions, extractions)
 
 
@@ -84,7 +52,7 @@ if __name__ == "__main__":
     #tc.say("I live in Chicago.")
 
 
-assert repr(results) == "[([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([ask_for_bank_acct_d: A lot of people don't use electronic checks, but I promise it's easier], {}), ([promise_payment: Thanks!  I'll send along payment shortly, question: What location are you based out of?], {}), ([push_3: You haven't told me where you are located yet?], {}), ([ask_for_bank_acct_a: I can send you the money.  What is your routing and bank account number?], {}), ([question: What location are you based out of?], {}), ([], {})]"
+assert repr(results) == "[([ask_for_bank_acct_a: 'I can send you the money.  What is your routing and bank account number?'], {}), ([ask_for_bank_acct_d: 'A lot of people don't use electronic checks, but I promise it's easier'], {}), ([promise_payment: 'Thanks!  I'll send along payment shortly', question: 'What location are you based out of?'], {}), ([push_3: 'You haven't told me where you are located yet?'], {}), ([ask_for_bank_acct_a: 'I can send you the money.  What is your routing and bank account number?'], {}), ([question: 'What location are you based out of?'], {}), ([], {})]"
 
 repr(results)
 
@@ -97,3 +65,5 @@ repr(results)
 # "I live in Chicago"
 
 # "routing number: 8998 account number: 12321312321"
+    
+

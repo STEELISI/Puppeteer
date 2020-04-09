@@ -1,39 +1,47 @@
-from typing import Optional
+from typing import List, Optional
 
 
-class Logging:
-    # Having this information at class level works as long as there are not puppeteers running react() concurrently. It
-    # would be nice to have the log state to an object, but the log object would have to be distributed to all objects
-    # that want to log, and trigger detectors might be used in more than one log context.
-    _lines = []
-    _indent_level = 0
-    _indent_size = 4
-    _stack = []
+class Logger:
+
+    INDENT_SIZE = 4
+    _instance = None
+
+    # Note: Having this information in a common object works as long as there are not puppeteers running react()
+    # concurrently.
+    def __init__(self) -> None:
+        self._lines: List[str] = []
+        self._indent_level = 0
+        self._stack: List[int] = []
+
+    def __new__(cls) -> "Logger":
+        if cls._instance is None:
+            cls._instance = super(Logger, cls).__new__(cls)
+        return cls._instance
 
     @property
     def log(self) -> Optional[str]:
-        if Logging._lines:
-            return "\n".join(Logging._lines)
+        if self._lines:
+            return "\n".join(self._lines)
         else:
             return None
 
-    def _log(self, line: Optional[str]) -> None:
+    def add(self, line: Optional[str]) -> None:
         if line is not None:
-            indent = " " * Logging._indent_level * Logging._indent_size
-            Logging._lines.append(indent + line)
+            indent = " " * self._indent_level * self.INDENT_SIZE
+            self._lines.append(indent + line)
 
-    def _log_begin(self, header):
-        self._log(header)
-        Logging._indent_level += 1
-        Logging._stack.append(len(Logging._lines))
+    def begin(self, header: str) -> None:
+        self.add(header)
+        self._indent_level += 1
+        self._stack.append(len(self._lines))
 
-    def _log_end(self):
-        if Logging._stack.pop() == len(Logging._lines):
+    def end(self) -> None:
+        if self._stack.pop() == len(self._lines):
             # Remove the header if there was nothing added.
-            Logging._lines.pop()
-        Logging._indent_level -= 1
+            self._lines.pop()
+        self._indent_level -= 1
 
-    def _clear_log(self) -> None:
-        Logging._lines = []
-        Logging._stack = []
-        Logging._indent_level = 0
+    def clear(self) -> None:
+        self._lines = []
+        self._stack = []
+        self._indent_level = 0

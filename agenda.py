@@ -6,7 +6,7 @@ import networkx as nx
 import yaml
 
 from .extractions import Extractions
-from .logging import Logging
+from .logging import Logger
 from .observation import Observation
 from .trigger_detector import TriggerDetector, TriggerDetectorLoader
 
@@ -32,6 +32,7 @@ class AgendaAttribute(abc.ABC):
 
     @property
     def name(self) -> str:
+        """Returns the name of this attribute."""
         return self._name
 
     @abc.abstractmethod
@@ -114,7 +115,7 @@ class Action(AgendaAttribute):
         self._allowed_repeats = allowed_repeats
     
     def __repr__(self) -> str:
-        return "%s: %s" % (self._name, self._text)
+        return "%s: '%s'" % (self._name, self._text)
     
     def __str__(self) -> str:
         return repr(self)
@@ -141,7 +142,7 @@ class Action(AgendaAttribute):
         return cls(d["name"], d["text"], d["exclusive_flag"], d["allowed_repeats"])
 
 
-class AgendaState(Logging):
+class AgendaState:
     """Holds trigger and state probabilities for an agenda, for an ongoing conversation.
 
     This is the main class holding agenda-level conversation state. Some state is also held in the PuppeteerPolicy.
@@ -155,6 +156,7 @@ class AgendaState(Logging):
         self._kickoff_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=True)
         self._state_probabilities = agenda.state_probabilities_cls(agenda)
         self._pos = None
+        self._log = Logger()
 
     @property
     def transition_trigger_probabilities(self) -> "TriggerProbabilities":
@@ -177,22 +179,22 @@ class AgendaState(Logging):
 
         Updating the agenda level state, based on extractions and observations made since the last time step.
         """
-        self._log_begin(f"Updating agenda {self._agenda.name}")
+        self._log.begin(f"Updating agenda {self._agenda.name}")
 
-        self._log_begin("Kickoff trigger probabilities")
+        self._log.begin("Kickoff trigger probabilities")
         new_extractions = self._kickoff_trigger_probabilities.update(observations, old_extractions)
-        self._log_end()
+        self._log.end()
 
-        self._log_begin("Transition trigger probabilities")
+        self._log.begin("Transition trigger probabilities")
         extractions = self._transition_trigger_probabilities.update(observations, old_extractions)
         new_extractions.update(extractions)
-        self._log_end()
+        self._log.end()
 
-        self._log_begin("State probabilities")
+        self._log.begin("State probabilities")
         self._state_probabilities.update(self._transition_trigger_probabilities, actions)
-        self._log_end()
+        self._log.end()
 
-        self._log_end()
+        self._log.end()
 
         return new_extractions
 
@@ -254,7 +256,7 @@ class TriggerProbabilities(abc.ABC):
             self._trigger_detectors = agenda.transition_trigger_detectors
             self._probabilities = {tr.name: 0.0 for tr in agenda.transition_triggers}
         self._non_trigger_prob = 1.0
-    
+
     @property
     def probabilities(self) -> Dict[str, float]:
         # TODO Replace this with a per-trigger lookup method.
@@ -286,11 +288,14 @@ class TriggerProbabilities(abc.ABC):
         raise NotImplementedError()
         
 
-class DefaultTriggerProbabilities(TriggerProbabilities, Logging):
+class DefaultTriggerProbabilities(TriggerProbabilities):
     """Handles trigger probabilities for an ongoing conversation.
 
     This is the default TriggerProbabilities implementation. See class TriggerProbabilities for more details.
     """
+    def __init__(self, agenda: "Agenda", kickoff: bool = False):
+        super(DefaultTriggerProbabilities, self).__init__(agenda, kickoff)
+        self._log = Logger()
 
     def update(self, observations: List[Observation], old_extractions: Extractions) -> Extractions:
         trigger_map: Dict[str, float] = {}
@@ -298,20 +303,28 @@ class DefaultTriggerProbabilities(TriggerProbabilities, Logging):
         new_extractions = Extractions()
         
         for trigger_detector in self.trigger_detectors:
-            self._log_begin(f"Trigger detector with trigger names {trigger_detector.trigger_names}")
+            self._log.begin(f"Trigger detector with trigger names {trigger_detector.trigger_names}")
             (trigger_map_out, non_trigger_prob, extractions) = trigger_detector.trigger_probabilities(observations,
                                                                                                       old_extractions)
 
+            if extractions.names:
+                self._log.begin("Extractions")
+                for name in extractions.names:
+                    self._log.add(f"{name}: {extractions.extraction(name)}")
+                self._log.end()
             new_extractions.update(extractions)
+
+            self._log.begin("Triggers")
             non_trigger_probs.append(non_trigger_prob)
             for (trigger_name, p) in trigger_map_out.items():
-                self._log(f"{trigger_name}: {p:.3f}")
+                self._log.add(f"{trigger_name}: {p:.3f}")
                 if trigger_name in self._probabilities:
                     if trigger_name not in trigger_map:
                         trigger_map[trigger_name] = p
                     elif trigger_map[trigger_name] < p:
                         trigger_map[trigger_name] = p
-            self._log_end()
+            self._log.end()
+            self._log.end()
 
         if trigger_map:
             non_trigger_prob = 1.0 - max(trigger_map.values())
@@ -333,11 +346,11 @@ class DefaultTriggerProbabilities(TriggerProbabilities, Logging):
         self._non_trigger_prob = non_trigger_prob
 
         if trigger_map:
-            self._log_begin("Final trigger probabilities")
+            self._log.begin("Final trigger probabilities")
             for (name, p) in self._probabilities.items():
-                self._log(f"{name}: {p:.3f}")
-            self._log(f"no trigger: {non_trigger_prob:.3f}")
-            self._log_end()
+                self._log.add(f"{name}: {p:.3f}")
+            self._log.add(f"no trigger: {non_trigger_prob:.3f}")
+            self._log.end()
 
         return new_extractions
 
@@ -390,11 +403,14 @@ class StateProbabilities(abc.ABC):
         raise NotImplementedError()
 
 
-class DefaultStateProbabilities(StateProbabilities, Logging):
+class DefaultStateProbabilities(StateProbabilities):
     """Handles state probabilities for an ongoing conversation.
 
     This is the default StateProbabilities implementation. See class StateProbabilities for more details.
     """
+    def __init__(self, agenda: "Agenda"):
+        super(DefaultStateProbabilities, self).__init__(agenda)
+        self._log = Logger()
 
     def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
         # Note: This is essentially copied from puppeteer_base, with updated
@@ -447,10 +463,10 @@ class DefaultStateProbabilities(StateProbabilities, Logging):
 
         self._probabilities = new_probability_map
 
-        self._log_begin("Updated state probabilities")
+        self._log.begin("Updated state probabilities")
         for (name, p) in self._probabilities.items():
-            self._log(f"{name}: {p:.3f}")
-        self._log_end()
+            self._log.add(f"{name}: {p:.3f}")
+        self._log.end()
 
 
 class AgendaPolicy(abc.ABC):
@@ -501,7 +517,7 @@ class AgendaPolicy(abc.ABC):
         raise NotImplementedError()
         
         
-class DefaultAgendaPolicy(AgendaPolicy, Logging):
+class DefaultAgendaPolicy(AgendaPolicy):
     """Handles agenda-level decisions about behavior.
 
     This is the default AgendaPolicy implementation.
@@ -559,6 +575,7 @@ class DefaultAgendaPolicy(AgendaPolicy, Logging):
         if kickoff_thresh <= 0.0:
             raise ValueError("kickoff_thresh must be positive, got %f" % kickoff_thresh)
         self._kickoff_thresh = kickoff_thresh
+        self._log = Logger()
 
     def to_dict(self) -> Dict[str, Any]:
         field_names = ["_reuse", "_max_transitions", "_absolute_accept_thresh",
@@ -617,10 +634,10 @@ class DefaultAgendaPolicy(AgendaPolicy, Logging):
         #  boolean to indicate if this an exclusive action that cannot be used
         #  with other actions, number of allowed repeats for this action)
         if turns_without_progress == 0:
-            self._log("Using normal action map.")
+            self._log.add("Using normal action map.")
             action_map = self._agenda.action_map
         else:
-            self._log("Using stall action map.")
+            self._log.add("Using stall action map.")
             action_map = self._agenda.stall_action_map
             
         # Work over the most likely state, to least likely, taking the first
@@ -630,7 +647,7 @@ class DefaultAgendaPolicy(AgendaPolicy, Logging):
                                            reverse=True)}:
             # XXX Maybe need to check likelihood.
             if st in action_map:
-                self._log(f"{st} is the most likely state that has actions defined.")
+                self._log.add(f"State {st} is the most likely state that has actions defined.")
                 for action_name in action_map[st]:
                     action = self._agenda.action(action_name)
                     exclusive_flag = action.exclusive_flag
@@ -649,10 +666,10 @@ class DefaultAgendaPolicy(AgendaPolicy, Logging):
                             # No more actions to add
                             break
                 if actions_taken:
-                    self._log(f"Doing actions: {[a.name for a in actions_taken]}")
+                    self._log.add(f"Doing actions: {[a.name for a in actions_taken]}")
                     return actions_taken
                 elif action_map == self._agenda.action_map:
-                    self._log("No actions left to take.")
+                    self._log.add("No normal actions left to take.")
                     # All normal actions were used the maximum number of times.
                     # See if there are stall actions left.
                     if st in self._agenda.stall_action_map:
@@ -663,8 +680,11 @@ class DefaultAgendaPolicy(AgendaPolicy, Logging):
                             num_times_action_was_used = action_history.count(action)
                             
                             if num_times_action_was_used < allowed_repeats:
-                                self._log(f"Using stall action {action.name} instead.")
+                                self._log.add(f"Using stall action {action.name} instead.")
                                 return [action]
+                    self._log.add("No stall actions to take either.")
+                else:
+                    self._log.add("No stall actions left to take.")
                 # Couldn't find any action for most likely state.
                 break
         return []
@@ -1005,6 +1025,7 @@ class Agenda:
         with open(filename, "r") as file:
             d = yaml.load(file)
         agenda = cls._from_dict(d, policy_cls, state_probabilities_cls, trigger_probabilities_cls)
+
         # Load trigger detectors
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
@@ -1012,6 +1033,7 @@ class Agenda:
 
         for detector in detectors:
             agenda.add_transition_trigger_detector(detector)
+
         # Kickoff triggers
         trigger_names = list(agenda._kickoff_triggers.keys())
         detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)

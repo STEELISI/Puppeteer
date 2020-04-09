@@ -241,5 +241,6 @@ class TriggerDetectorLoader:
                                             multi_engine=snips_multi_engine)
             detector.load()
             detectors.append(detector)
-        assert detectors
-        return detectors
+
+        # Return unique detectors
+        return list(set(detectors))

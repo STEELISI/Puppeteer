@@ -21,7 +21,13 @@ class MessageObservation(Observation):
     def __init__(self, text: str) -> None:
         self._text = text
         self._intents: Set[str] = set()
-    
+
+    def __str__(self) -> str:
+        if self._intents:
+            return f"text: '{self._text}', intents: {list(self._intents)}"
+        else:
+            return f"text: '{self._text}',"
+
     @property
     def text(self) -> str:
         return self._text

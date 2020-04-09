@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .agenda import Action, Agenda, AgendaState
-from .logging import Logging
+from .logging import Logger
 from .observation import Observation
 from .extractions import Extractions
 
@@ -47,12 +47,12 @@ class PuppeteerPolicy(abc.ABC):
         raise NotImplementedError()
 
 
-class DefaultPuppeteerPolicy(PuppeteerPolicy, Logging):
+class DefaultPuppeteerPolicy(PuppeteerPolicy):
     """Handles inter-agenda decisions about behavior.
 
     This is the default PuppeteerPolicy implementation. See PuppeteerPolicy documentation for further details.
     """
-    
+
     def __init__(self, agendas: List[Agenda]) -> None:
         super(DefaultPuppeteerPolicy, self).__init__(agendas)
         # State
@@ -60,14 +60,7 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy, Logging):
         self._turns_without_progress = {a.name: 0 for a in agendas}
         self._times_made_current = {a.name: 0 for a in agendas}
         self._action_history: Dict[str, List[Action]] = {a.name: [] for a in agendas}
-        
-    def _deactivate_agenda(self, agenda_name: str) -> None:
-        # TODO Turducken currently keeps the history when an agenda is
-        # deactivated. Can lead to avoiding states with few actions when an
-        # agenda is re-run.
-        # self._turns_without_progress[agenda_name] = 0
-        # self._action_history[agenda_name] = []
-        pass
+        self._log = Logger()
 
     def act(self, agenda_states: Dict[str, AgendaState]) -> List[Action]:
         """"Picks zero or more appropriate actions to take, given the current state of the conversation.
@@ -79,18 +72,27 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy, Logging):
         actions: List[Action] = []
 
         if agenda is not None:
-            self._log_begin(f"Current agenda is {agenda.name}.")
+            self._log.begin(f"Current agenda is {agenda.name}.")
             agenda_state = agenda_states[agenda.name]
-            
+
+            self._log.begin(f"Puppeteer policy state for {agenda.name}:")
+            self._log.add(f"Turns without progress: {self._turns_without_progress[agenda.name]}")
+            self._log.add(f"Times used: {self._times_made_current[agenda.name]}")
+            self._log.add(f"Action history: {[a.name for a in self._action_history[agenda.name]]}")
+            self._log.end()
+
             # Update agenda state based on message.
             # What to handle in output?
             progress_flag = agenda.policy.made_progress(agenda_state)
+            # Note that even if the agenda is considered done at this point, having reached a
+            # terminal state as the result of the incoming observations, it still gets to do
+            # a final action.
             done_flag = progress_flag and agenda.policy.is_done(agenda_state)
             if progress_flag:
-                self._log("We have made progress with the agenda.")
+                self._log.add("We have made progress with the agenda.")
                 self._turns_without_progress[agenda.name] = 0
             else:
-                self._log("We have not made progress with the agenda.")
+                self._log.add("We have not made progress with the agenda.")
                 # At this point, the current agenda (if there is
                 # one) was the one responsible for our previous
                 # reply in this convo. Only this agenda has its
@@ -98,87 +100,93 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy, Logging):
                 self._turns_without_progress[agenda.name] += 1
 
             turns_without_progress = self._turns_without_progress[agenda.name]
-            
+
             if turns_without_progress >= 2:
-                self._log("The agenda has been going on for too long without progress and will be reset.")
+                self._log.add("The agenda has been going on for too long without progress and will be stopped.")
                 agenda_state.reset()
-                self._deactivate_agenda(agenda.name)
                 self._current_agenda = None
                 last_agenda = agenda
             else:
                 # Run and see if we get some actions.
                 action_history = self._action_history[agenda.name]
-                self._log_begin("Picking actions for the agenda.")
+                self._log.begin("Picking actions for the agenda.")
                 actions = agenda.policy.pick_actions(agenda_state, action_history, turns_without_progress)
-                self._log_end()
+                self._log.end()
                 self._action_history[agenda.name].extend(actions)
 
                 if not done_flag:
-                    self._log("The agenda is not in a terminal state, so keeping it as current.")
+                    self._log.add("The agenda is not in a terminal state, so keeping it as current.")
                     # Keep going with this agenda.
-                    self._log_end()
+                    self._log.end()
                     return actions
                 else:
-                    self._log("The agenda is in a terminal state, so will be reset.")
+                    self._log.add("The agenda is in a terminal state, so will be stopped.")
                     # We inactivate this agenda. Will choose a new agenda
                     # in the main while-loop below.
                     # We're either done with the agenda, or had too many turns
                     # without progress.
                     # Do last action if there is one.
                     agenda_state.reset()
-                    self._deactivate_agenda(agenda.name)
                     self._current_agenda = None
                     last_agenda = agenda
-            self._log_end()
+            self._log.end()
         # Try to pick a new agenda.
-        self._log_begin("Trying to find a new agenda to start.")
+        self._log.begin("Trying to find a new agenda to start.")
         for agenda in np.random.permutation(self._agendas):
             agenda_state = agenda_states[agenda.name]
-            self._log_begin(f"Considering agenda {agenda.name}.")
-            
+            self._log.begin(f"Considering agenda {agenda.name}.")
+
+            if agenda == last_agenda:
+                self._log.add("Just stopped this agenda, will not start it immediately again.")
+                self._log.end()
+                continue
+            elif self._times_made_current[agenda.name] > 1:
+                self._log.add(f"This agenda has already been used {self._times_made_current[agenda.name]} times, " +
+                              "will not start it again.")
+                self._log.end()
+                continue
+
             if agenda.policy.can_kick_off(agenda_state):
-                self._log("The agenda can kick off.")
+                # If we can kick off, make this our active agenda, do actions and return.
+                self._log.add("The agenda can kick off. This is our new agenda!")
+                self._log.begin(f"Puppeteer policy state for {agenda.name}:")
+                self._log.add(f"Turns without progress: {self._turns_without_progress[agenda.name]}")
+                self._log.add(f"Times used: {self._times_made_current[agenda.name]}")
+                self._log.add(f"Action history: {[a.name for a in self._action_history[agenda.name]]}")
+                self._log.end()
+
                 # TODO When can the agenda be done already here?
                 done_flag = agenda.policy.is_done(agenda_state)
                 agenda_state.reset()
-                kick_off_condition = True
-            else:
-                kick_off_condition = False
 
-            if agenda == last_agenda or self._times_made_current[agenda.name] > 1:
-                # TODO Better to do this before checking for kickoff?
-                self._deactivate_agenda(agenda.name)
-                agenda_state.reset()
-                self._log_end()
-                continue
-    
-            # IF we kicked off, make this our active agenda, do actions and return.
-            if kick_off_condition:
-                # Successfully kicked this off.
-                # Make this our current agenda.           
+                # Make this our current agenda.
                 self._current_agenda = agenda
                 self._times_made_current[agenda.name] += 1
 
                 # Do first action.
                 # TODO run_puppeteer() uses [] for the action list, not self._action_history
+                self._log.begin("Picking actions for the agenda.")
                 new_actions = agenda.policy.pick_actions(agenda_state, [], 0)
+                self._log.end()
                 actions.extend(new_actions)
                 self._action_history[agenda.name].extend(new_actions)
 
                 # TODO This is the done_flag from kickoff. Should check again now? Probably better to enforce in Agenda
                 # that start states are never terminal.
                 if done_flag:
-                    self._log("We started the agenda, but its start state is a terminal state, so resetting it.")
-                    self._deactivate_agenda(agenda.name)
+                    self._log.add("We started the agenda, but its start state is a terminal state, so stopping it.")
+                    self._log.add("Finishing act phase without a current agenda.")
                     self._current_agenda = None
-                self._log_end()
+                self._log.end()
+                self._log.end()
                 return actions
-            else:
-                self._deactivate_agenda(agenda.name)
-            self._log_end()
-        self._log_end()
+            self._log.end()
+        self._log.end()
+
         # We failed to take action with an old agenda
         # and failed to kick off a new agenda. We have nothing.
+        self._log.add("Finishing act phase without a current agenda.")
+
         return actions
 
     def plot_state(self, fig: plt.Figure, agenda_states: Dict[str, AgendaState]) -> None:
@@ -201,7 +209,7 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy, Logging):
         plt.show()
 
 
-class Puppeteer(Logging):
+class Puppeteer:
     """Agendas-based dialog bot.
 
     A Puppeteer instance is responsible for handling all aspects of the computer's side of the conversation, making
@@ -232,6 +240,7 @@ class Puppeteer(Logging):
         4. The surrounding implementation takes the Puppeteer's action, and realizes them, typically providing some kind
            of reply to the other party.
     """
+
     def __init__(self, agendas: List[Agenda],
                  policy_cls: Type[PuppeteerPolicy] = DefaultPuppeteerPolicy,
                  plot_state: bool = False) -> None:
@@ -244,7 +253,17 @@ class Puppeteer(Logging):
             self._policy.plot_state(self._fig, self._agenda_states)
         else:
             self._fig = None
-        
+        self._log = Logger()
+
+    @property
+    def log(self) -> str:
+        """Returns a log string from the latest call to react().
+
+        The log string contains information that is helpful in understanding the inner workings of the puppeteer -- why
+        it acts the way it does based on the inputs, and what its internal state is.
+        """
+        return self._log.log
+
     def react(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[List[Action], Extractions]:
         """"Picks zero or more appropriate actions to take, given the input and current state of the conversation.
 
@@ -262,16 +281,36 @@ class Puppeteer(Logging):
             - An updated Extractions object, combining the input extractions with any extractions made by the Puppeteer
               in this method call.
         """
-        self._clear_log()
+        self._log.clear()
+        self._log.begin("Inputs")
+        self._log.begin("Observations")
+        for o in observations:
+            self._log.add(str(o))
+        self._log.end()
+        self._log.begin("Extractions")
+        for name in old_extractions.names:
+            self._log.add(f"{name}: '{old_extractions.extraction(name)}'")
+        self._log.end()
+        self._log.end()
         new_extractions = Extractions()
-        self._log_begin("Update phase")
+        self._log.begin("Update phase")
         for agenda_state in self._agenda_states.values():
             extractions = agenda_state.update(self._last_actions, observations, old_extractions)
             new_extractions.update(extractions)
-        self._log_end()
-        self._log_begin("Act phase")
+        self._log.end()
+        self._log.begin("Act phase")
         self._last_actions = self._policy.act(self._agenda_states)
-        self._log_end()
+        self._log.end()
+        self._log.begin("Outputs")
+        self._log.begin("Actions")
+        for a in self._last_actions:
+            self._log.add(str(a))
+        self._log.end()
+        self._log.begin("Extractions")
+        for name in new_extractions.names:
+            self._log.add(f"{name}: '{new_extractions.extraction(name)}'")
+        self._log.end()
+        self._log.end()
         if self._fig is not None:
             self._policy.plot_state(self._fig, self._agenda_states)
         return self._last_actions, new_extractions

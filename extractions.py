@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 class Extractions:
@@ -29,6 +29,13 @@ class Extractions:
 
     def __repr__(self) -> str:
         return repr(self._extractions)
+
+    @property
+    def names(self) -> List[str]:
+        return list(self._extractions.keys())
+
+    def extraction(self, name: str) -> Any:
+        return self._extractions[name]
 
     def add_extraction(self, name: str, value: Any) -> None:
         """Adds an extraction.

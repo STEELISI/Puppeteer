@@ -40,6 +40,9 @@ while True:
         observations = [MessageObservation(text)]
         (actions, new_extractions) = puppeteer.react(observations, extractions)
         
+        # Print detailed log of what happened in react().
+        print(puppeteer.log)
+
         # Update extractions with new extractions made by the puppeteer.
         extractions.update(new_extractions)
         
