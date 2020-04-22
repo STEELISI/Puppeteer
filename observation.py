@@ -1,29 +1,39 @@
 import abc
+from typing import Set
 
 
 class Observation(abc.ABC):
-    # Abstract base class for all types of observations used by the Puppeteer
-    # to update its beliefs.
-    # Corresponds to InputManager from the v0.1 description.
+    """Observation of something that has happened since last time the Puppeteer was run."""
     pass
 
 
 class MessageObservation(Observation):
-    # An Observation class implementing a message that has been received. Can
-    # subclass this for more specific message types with more specific information.
-    
-    def __init__(self, text: str):
+    """A message received since last time the Puppeteer was run.
+
+    The message object contains the message text and a list of intents detected in the message.
+
+    Intents may be set by external analysis before the message is handed to the Puppeteer, and may represent the belief
+    that the message expresses some intent. The intent mechanism may also be used more generally, to indicate some fact
+    that has been inferred about the message. Intents are typically used by subclasses of TriggerDetector as a part of
+    determining whether a trigger has occurred -- this is how they may affect Puppeteer behavior.
+    """
+
+    def __init__(self, text: str) -> None:
         self._text = text
-        self._intents = []
-    
+        self._intents: Set[str] = set()
+
+    def __str__(self) -> str:
+        if self._intents:
+            return f"text: '{self._text}', intents: {list(self._intents)}"
+        else:
+            return f"text: '{self._text}',"
+
     @property
     def text(self) -> str:
         return self._text
     
-    def has_intent(self, intent):
+    def has_intent(self, intent: str) -> bool:
         return intent in self._intents
 
-    def add_intent(self, intent):
-        return self._intents.append(intent)
-
-
+    def add_intent(self, intent: str) -> None:
+        self._intents.add(intent)

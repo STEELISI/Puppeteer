@@ -1,58 +1,157 @@
-import os
+import json
+from os import walk
+from os.path import basename, join
+from typing import Any, Dict, FrozenSet, Generator, List, Tuple
 
-from files import filenames_from_dirname
-from snips_helpers import snips_over_text_body, snips_train_from_txt
-from spacy_helpers import spacy_load
+from snips_nlu import SnipsNLUEngine  # type: ignore
+from snips_nlu.default_configs import CONFIG_EN  # type: ignore
+import spacy
 
 
-class SpacyLoader:
-    # Implements lookup to make sure that we only load one copy of each Spacy
-    # model.
+class SpacyEngine:
+    """Wrapper around a Spacy model."""
 
-    _nlp = dict()
+    _engines: Dict[str, "SpacyEngine"] = dict()
+
+    def __init__(self, model: str) -> None:
+        self._nlp = spacy.load(model)
 
     @classmethod
-    def nlp(cls, model='en_core_web_lg'):
-        if model not in cls._nlp:
-            cls._nlp[model] = spacy_load(model=model)
-        return cls._nlp[model]
+    # TODO Should use type var here?
+    def load(cls, model: str = 'en_core_web_lg') -> "SpacyEngine":
+        if model not in cls._engines:
+            cls._engines[model] = SpacyEngine(model)
+        return cls._engines[model]
+
+    def get_sentences(self, text: str) -> List[str]:
+        sens = []
+        for chunk in self._generate_data_chunks(text):
+            sens.extend([s.text for s in self._nlp(chunk).sents])
+        return sens
+
+    def nent_extraction(self, text: str) -> Dict[str, List[str]]:
+        orgs: List[str] = []
+        # Like orgs, but religious, political and nationality groups
+        norgs: List[str] = []
+        # Locs are Spacy's GPE (country, city etc.) and Spacy's LOCs (bodies of water, mountain ranges etc.)
+        locs: List[str] = []
+        people: List[str] = []
+        products: List[str] = []
+        money_amounts: List[str] = []
+        # Well known events like WW2
+        events: List[str] = []
+        # Quantities - like weight, distance
+        quants: List[str] = []
+
+        map_spacy_to_ours = {
+            'PERSON': people,
+            'NORP': norgs,
+            'FAC': locs,
+            'ORG': orgs,
+            'GPE': locs,
+            'LOC': locs,
+            'PRODUCT': products,
+            'EVENT': events,
+            'PERCENT': quants,
+            'MONEY': money_amounts,
+            'QUANTITY': quants
+        }
+
+        # Spacy can choke on large data, so chunk if we have to.
+        for chunk in self._generate_data_chunks(text):
+            doc = self._nlp(chunk)
+            for ent in doc.ents:
+                if ent.label_ in map_spacy_to_ours:
+                    our_list = map_spacy_to_ours[ent.label_]
+                    our_list.append(ent.text)
+
+        return {'orgs': orgs, 'norgs': norgs, 'locs': locs, 'people': people, 'products': products,
+                'money': money_amounts, 'events': events, 'quants': quants}
+
+    @staticmethod
+    def _generate_data_chunks(data: str, chunk_size: int = 2000) -> Generator[str, None, None]:
+        # Spacy can croak on large data.
+        boundary_chars = ['.', '!', '?', '=', '*']
+        sindex = 0
+        eindex = chunk_size
+        while sindex < len(data):
+            if eindex < len(data):
+                if eindex < len(data):
+                    move_up_start = eindex
+                    while eindex < len(data) and not data[eindex] in boundary_chars and eindex < move_up_start + 200:
+                        eindex = eindex + 1
+                    if eindex < len(data) - 2:
+                        if data[eindex] in boundary_chars:
+                            eindex = eindex + 1
+                if eindex < len(data):
+                    d = data[sindex:eindex]
+                else:
+                    d = data[sindex:]
+            else:
+                d = data[sindex:]
+            sindex = eindex
+            eindex = sindex + chunk_size
+            yield d
 
 
 class SnipsEngine:
-    # Wrapper around a Snips engine.
-    
-    def __init__(self, engine, intent_names, nlp):
+    """Wrapper around a Snips engine."""
+
+    _engines: Dict[FrozenSet[str], "SnipsEngine"] = dict()
+
+    def __init__(self, engine: SnipsNLUEngine, intent_names: List[str], nlp: SpacyEngine) -> None:
         self._engine = engine
         self._intent_names = intent_names
         self._nlp = nlp
 
-    @property
-    def intent_names(self):
-        return self._intent_names
-    
-    def detect(self, text: str):
-        return snips_over_text_body(text, self._nlp, self._engine) 
-
-
-class SnipsLoader:
-    # Implements lookup to make sure that we only train one copy of each Snips
-    # engine. An engine is defined by the set of paths for its training
-    # directories (used as lookup key).
-
-    _engines = dict()
-    
     @classmethod
-    def engine(cls, paths, nlp):
-        paths = frozenset(paths)
+    def load(cls, path_list: List[str], nlp: SpacyEngine) -> "SnipsEngine":
+        paths = frozenset(path_list)
         if paths not in cls._engines:
             filenames = []
             for path in paths:
-                filenames.extend(filenames_from_dirname(path))
-            print(filenames)
-            snips_engine = snips_train_from_txt(filenames)
+                for wpath, _, files in walk(path):
+                    for filename in files:
+                        fullpath = join(wpath, filename)
+                        filenames.append(fullpath)
             # The intent name is the name of the leaf folder
-            intent_names = [os.path.basename(p) for p in paths]
-            cls._engines[paths] = SnipsEngine(snips_engine, intent_names, nlp)
+            intent_names = [basename(p) for p in paths]
+            cls._engines[paths] = cls.train(filenames, intent_names, nlp)
         return cls._engines[paths]
 
+    @classmethod
+    def train(cls, filenames: List[str], intent_names: List[str], nlp: SpacyEngine) -> "SnipsEngine":
+        json_dict: Dict[str, Any] = {"intents": {}}
+        for filename in filenames:
+            skillname = filename.replace('.txt', '').replace('-', '')
+            skillname = basename(skillname)
+            json_dict["intents"][skillname] = {}
+            json_dict["intents"][skillname]["utterances"] = []
+            with open(filename, "r") as f:
+                filetxt = f.read()
+            for txt in filetxt.split('\n'):
+                if txt.strip() != "":
+                    udic: Dict[str, List[Dict[str, str]]] = {"data": []}
+                    udic["data"].append({"text": txt})
+                    json_dict["intents"][skillname]["utterances"].append(udic)
+        json_dict["entities"] = {}
+        json_dict["language"] = "en"
 
+        engine = SnipsNLUEngine(config=CONFIG_EN)
+        engine.fit(json.loads(json.dumps(json_dict, sort_keys=False)))
+        return cls(engine, intent_names, nlp)
+
+    @property
+    def intent_names(self) -> List[str]:
+        return self._intent_names
+
+    def detect(self, text: str) -> List[Tuple[str, float, str]]:
+        intents = []
+        sens = self._nlp.get_sentences(text)
+        for sen in sens:
+            results = self._engine.parse(sen)
+            intent = results["intent"]["intentName"]
+            p = results["intent"]["probability"]
+            if intent is not None and intent != 'null':
+                intents.append((intent, p, sen))
+        return sorted(intents, key=lambda tup: tup[1], reverse=True)
