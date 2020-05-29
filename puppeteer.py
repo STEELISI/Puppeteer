@@ -26,6 +26,11 @@ class PuppeteerPolicy(abc.ABC):
     """
 
     def __init__(self, agendas: List[Agenda]) -> None:
+        """Initialize a new policy
+
+        Args:
+            agendas: The agendas used by the policy.
+        """
         self._agendas = agendas
 
     @abc.abstractmethod
@@ -54,6 +59,11 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
     """
 
     def __init__(self, agendas: List[Agenda]) -> None:
+        """Initialize a new policy
+
+        Args:
+            agendas: The agendas used by the policy.
+        """
         super(DefaultPuppeteerPolicy, self).__init__(agendas)
         # State
         self._current_agenda = None
@@ -66,6 +76,14 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
         """"Picks zero or more appropriate actions to take, given the current state of the conversation.
 
         See documentation of this method in PuppeteerPolicy.
+
+        Args:
+            agenda_states: For each agenda (indexed by name), the AgendaState object holding the current belief about
+                the state of the agenda, based on the latest observations -- the observations that this method is
+                reacting to.
+
+        Returns:
+            A list of Action objects representing actions to take, in given order.
         """
         agenda = self._current_agenda
         last_agenda = None
@@ -190,6 +208,12 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
         return actions
 
     def plot_state(self, fig: plt.Figure, agenda_states: Dict[str, AgendaState]) -> None:
+        """Plot the state of the current agenda, if any.
+
+        Args:
+            fig: Figure to plot to.
+            agenda_states: For each agenda (indexed by name), the AgendaState object holding the current agenda state.
+        """
         plt.figure(fig.number)
         plt.clf()
         if self._current_agenda is None:
@@ -244,6 +268,13 @@ class Puppeteer:
     def __init__(self, agendas: List[Agenda],
                  policy_cls: Type[PuppeteerPolicy] = DefaultPuppeteerPolicy,
                  plot_state: bool = False) -> None:
+        """Initialize a new Puppeteer.
+
+        Args:
+            agendas: List of agendas to be used by the Puppeteer.
+            policy_cls: The policy delegate class to use.
+            plot_state: If true, the updated state of the current agenda is plotted after each turn.
+        """
         self._agendas = agendas
         self._agenda_states = {a.name: AgendaState(a) for a in agendas}
         self._last_actions: List[Action] = []

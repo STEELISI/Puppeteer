@@ -27,6 +27,7 @@ class TriggerDetector(abc.ABC):
     @property
     @abc.abstractmethod
     def trigger_names(self) -> List[str]:
+        """Returns the names of the triggers detected by this trigger detector."""
         raise NotImplementedError()
 
     def load(self) -> None:
@@ -113,6 +114,10 @@ class SnipsTriggerDetector(TriggerDetector):
             self._paths_list = [paths]
     
     def load(self) -> None:
+        """Loads the trigger detector.
+
+        See documentation of the corresponding method in TriggerDetector.
+        """
         for paths in self._paths_list:
             engine = SnipsEngine.load(paths, self._nlp)
             self._engines.append(engine)
@@ -120,10 +125,15 @@ class SnipsTriggerDetector(TriggerDetector):
     
     @property
     def trigger_names(self) -> List[str]:
+        """Returns the names of the triggers detected by this trigger detector."""
         return list(self._trigger_names)
 
     def trigger_probabilities(self, observations: List[Observation],
                               old_extractions: Extractions) -> Tuple[Dict[str, float], float, Extractions]:
+        """Returns trigger probabilities and extractions, based on observations and previous extractions.
+
+        See documentation of the corresponding method in TriggerDetector.
+        """
         texts = []
         for observation in observations:
             if isinstance(observation, MessageObservation):
@@ -181,29 +191,59 @@ class TriggerDetectorLoader:
     object that it returns.
     """
     def __init__(self, default_snips_path: Optional[str] = None) -> None:
+        """Initializes a newly created TriggerDetectorLoader.
+
+        Args:
+            default_snips_path: The default root path used to load SNIPS-based trigger detectors.
+        """
         self._default_snips_path = default_snips_path
         self._snips_paths: Dict[str, str] = {}
         self._registered: Dict[str, TriggerDetector] = {}
         self._registered_by_agenda: Dict[str, Dict[str, TriggerDetector]] = {}
     
-    # What to register? Class? Needs to allow parameters -- best to register
-    # detectors, but have load method in trigger that loads it when needed.
     def register_detector(self, detector: TriggerDetector) -> None:
+        """Register a trigger detector that may be used by any agenda.
+
+        Args:
+            detector: The trigger detector.
+        """
         for trigger_name in detector.trigger_names:
             self._registered[trigger_name] = detector
     
     def register_detector_for_agenda(self, agenda_name: str, detector: TriggerDetector) -> None:
+        """Register a trigger detector that may only be used by a single agenda.
+
+        Args:
+            agenda_name: The name of the agenda.
+            detector: The trigger detector.
+        """
         if agenda_name not in self._registered_by_agenda:
             self._registered_by_agenda[agenda_name] = {}
         for trigger_name in detector.trigger_names:
             self._registered_by_agenda[agenda_name][trigger_name] = detector
     
     def register_snips_path_for_agenda(self, agenda_name: str, snips_path: str) -> None:
+        """Register a path to SNIPS intents used by a single agenda.
+
+        Args:
+            agenda_name: The name of the agenda.
+            snips_path: The path to the SNIPS intents.
+        """
         self._snips_paths[agenda_name] = snips_path
     
     def load(self, agenda_name: str,
              trigger_names: List[str],
              snips_multi_engine: bool = False) -> List[TriggerDetector]:
+        """Load trigger detectors for an agenda.
+
+        Args:
+            agenda_name: The name of the agenda.
+            trigger_names: The names of the triggers to load.
+            snips_multi_engine: If true, SnipsTriggerDetectors are loaded in multi-engine mode.
+
+        Return:
+            A list containing the loaded trigger detectors.
+        """
         detectors = []
         snips_trigger_paths = []
         for trigger_name in trigger_names:

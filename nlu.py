@@ -14,22 +14,56 @@ class SpacyEngine:
     _engines: Dict[str, "SpacyEngine"] = dict()
 
     def __init__(self, model: str) -> None:
+        """Initializes a new SpacyEngine using the given language model.
+
+        This method is only intended for class-internal use. For external
+        code getting access to a SpacyEngine, the load() method should be
+        used.
+
+        Args:
+            model: Name of the Spacy language model to use.
+        """
         self._nlp = spacy.load(model)
 
     @classmethod
-    # TODO Should use type var here?
     def load(cls, model: str = 'en_core_web_lg') -> "SpacyEngine":
+        """Load a SpacyEngine using the given language model.
+
+        Args:
+            model: Name of the Spacy language model to use.
+
+        Returns:
+            An engine using the specified language model.
+        """
         if model not in cls._engines:
             cls._engines[model] = SpacyEngine(model)
         return cls._engines[model]
 
     def get_sentences(self, text: str) -> List[str]:
+        """Extract sentences from a text.
+
+        Args:
+            text: A text string to extract sentences from.
+
+        Returns:
+            List of extracted sentences.
+        """
         sens = []
         for chunk in self._generate_data_chunks(text):
             sens.extend([s.text for s in self._nlp(chunk).sents])
         return sens
 
     def nent_extraction(self, text: str) -> Dict[str, List[str]]:
+        """Extract named entities from a text.
+
+        Args:
+            text: A text string to extract named entities from.
+
+        Returns:
+            A dictionary of extracted named entities. Keys in the dictionary are
+            names of types of named entities ("people", "orgs", etc.), and values
+            are list of extracted entity names for the given type.
+        """
         orgs: List[str] = []
         # Like orgs, but religious, political and nationality groups
         norgs: List[str] = []
@@ -70,6 +104,18 @@ class SpacyEngine:
 
     @staticmethod
     def _generate_data_chunks(data: str, chunk_size: int = 2000) -> Generator[str, None, None]:
+        """Divide a text into a sequence of text chunks.
+
+        The method aims to make splits at boundary characters, not splitting
+        sentences into different chunks.
+
+        Args:
+            data: Text to divide into chunks:
+            chunk_size: Target size in characters of each chunk.
+
+        Yields:
+            The next chunk.
+        """
         # Spacy can croak on large data.
         boundary_chars = ['.', '!', '?', '=', '*']
         sindex = 0
@@ -100,12 +146,35 @@ class SnipsEngine:
     _engines: Dict[FrozenSet[str], "SnipsEngine"] = dict()
 
     def __init__(self, engine: SnipsNLUEngine, intent_names: List[str], nlp: SpacyEngine) -> None:
+        """Initialize a new SnipsEngine.
+
+        This method is only intended for class-internal use. For external
+        code getting access to a SnipsEngine, the load() method should be
+        used.
+
+        Args:
+            engine: The wrapped Snips engine.
+            intent_names: The intent names the engine detects.
+            nlp: A SpacyEngine used internally to split text into sentences.
+        """
         self._engine = engine
         self._intent_names = intent_names
         self._nlp = nlp
 
     @classmethod
     def load(cls, path_list: List[str], nlp: SpacyEngine) -> "SnipsEngine":
+        """Load a SnpisEngine trained on data stored at the given path.
+
+        Refer to the documentation of class SnipsTriggerDetector for details
+        of how to organize the training data.
+
+        Args:
+            path_list: List of root paths where training data is located.
+            nlp: A SpacyEngine used internally to split text into sentences.
+
+        Returns:
+            An engine trained on the given data.
+        """
         paths = frozenset(path_list)
         if paths not in cls._engines:
             filenames = []
@@ -121,6 +190,19 @@ class SnipsEngine:
 
     @classmethod
     def train(cls, filenames: List[str], intent_names: List[str], nlp: SpacyEngine) -> "SnipsEngine":
+        """Create and train a SnipsEngine on given data.
+
+        Refer to the documentation of class SnipsTriggerDetector for details
+        of how to organize the training data.
+
+        Args:
+            filenames: List of paths to files to use as training data.
+            intent_names: The intent names the created engine detects.
+            nlp: A SpacyEngine used internally by the created engine to split text into sentences.
+
+        Returns:
+            An engine trained on the given data.
+        """
         json_dict: Dict[str, Any] = {"intents": {}}
         for filename in filenames:
             skillname = filename.replace('.txt', '').replace('-', '')
@@ -143,9 +225,23 @@ class SnipsEngine:
 
     @property
     def intent_names(self) -> List[str]:
+        """Returns the intent names that this engine detects."""
         return self._intent_names
 
     def detect(self, text: str) -> List[Tuple[str, float, str]]:
+        """Detect intents in the given text.
+
+        Args:
+            text: Text to detect intents in.
+
+        Returns:
+            A list of detections. Each detection is a tuple consisting of:
+            - The name of the intent.
+            - The probability of the detection. The exact interpretation of
+              this probability is a bit unclear, but it can at least be
+              viewed as a reasonable confidence measure.
+            - The sentence in which the intent was detected.
+        """
         intents = []
         sens = self._nlp.get_sentences(text)
         for sen in sens:

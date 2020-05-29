@@ -24,38 +24,67 @@ class Extractions:
     handling extractions between turns.
     """
     def __init__(self) -> None:
-        """Creates an empty set of extractions."""
+        """Initializes an Extraction object with an empty set of extractions."""
         self._extractions: Dict[str, Any] = {}
 
     def __repr__(self) -> str:
+        """Return a string representation of this object."""
         return repr(self._extractions)
 
     @property
     def names(self) -> List[str]:
+        """Return the list of names (keys) for the extractions."""
         return list(self._extractions.keys())
 
     def extraction(self, name: str) -> Any:
+        """Get the extraction with the given name.
+
+        Args:
+            name: Name (key) of the extraction.
+
+        Return:
+            The extraction with the given name.
+        """
         return self._extractions[name]
 
     def add_extraction(self, name: str, value: Any) -> None:
         """Adds an extraction.
 
         Updates the extraction if there was an extraction already set for the name.
+
+        Args:
+            name: Name (key) of the extraction.
+            value: The extraction value.
+
         """
         self._extractions[name] = value
 
     def remove_extraction(self, name: str) -> None:
-        """Removes an extraction, if present."""
+        """Removes an extraction, if present.
+
+        Args:
+            name: Name (key) of the extraction.
+        """
         if name in self._extractions:
             del self._extractions[name]
 
     def update(self, extractions: "Extractions") -> None:
-        """Updates these extractions
+        """Adds given extractions to the extractions of this object.
 
         Uses extraction from argument if there are duplicate names.
+
+        Args:
+            extractions: Extractions to add.
         """
         self._extractions.update(extractions._extractions)
 
     def has_extraction(self, name: str) -> bool:
-        """Returns true if this object has an extraction with the given name."""
+        """Returns true if this object has an extraction with the given name.
+
+        Args:
+            name: Name (key) of the extraction.
+
+        Returns:
+            True if this object has an extraction with the given name.
+        """
         return name in self._extractions

@@ -19,10 +19,16 @@ class MessageObservation(Observation):
     """
 
     def __init__(self, text: str) -> None:
+        """Initializes a new MessageObservation.
+
+        Args:
+            text: The message text.
+        """
         self._text = text
         self._intents: Set[str] = set()
 
     def __str__(self) -> str:
+        """Returns a string representation of this object."""
         if self._intents:
             return f"text: '{self._text}', intents: {list(self._intents)}"
         else:
@@ -30,10 +36,24 @@ class MessageObservation(Observation):
 
     @property
     def text(self) -> str:
+        """Returns the message text."""
         return self._text
     
     def has_intent(self, intent: str) -> bool:
+        """Returns True if the observation has the given intent.
+
+        Args:
+            intent: The name of the intent.
+
+        Returns:
+            True if the observation has the given intent.
+        """
         return intent in self._intents
 
     def add_intent(self, intent: str) -> None:
+        """Add an intent to this observation.
+
+        Args:
+            intent: The name of the intent.
+        """
         self._intents.add(intent)
