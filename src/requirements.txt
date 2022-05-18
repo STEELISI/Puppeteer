@@ -1,0 +1,15 @@
+# core requirements
+matplotlib==3.5.1
+networkx==2.7.1
+pyyaml==6.0
+snips-nlu==0.20.2
+spacy==3.3.0
+
+# extras for development
+black==19.3b0
+pytest==5.2.0
+pytest-custom_exit_code
+coverage==4.5.4
+pytest-cov==2.8.0
+pytest-benchmark==3.2.2
+pylint==2.3.1
