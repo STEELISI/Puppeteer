@@ -18,8 +18,8 @@ setup(
     description="modular dialog bot",
     url="https://github.com/STEELISI/Puppeteer",
     packages=find_packages(),
-    # 3.6 and up, but not Python 4
-    python_requires="~=3.6",
+    # 3.8 and up, but not Python 4
+    python_requires="~=3.8",
     install_requires=[],
     scripts=[],
     classifiers=["Programming Language :: Python :: 3"],

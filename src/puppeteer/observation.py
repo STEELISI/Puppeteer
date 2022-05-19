@@ -4,7 +4,8 @@ from typing import Set
 
 class Observation(abc.ABC):
     """Observation of something that has happened since last time the Puppeteer was run."""
-    pass
+
+    pass  # pylint: disable=W0107
 
 
 class MessageObservation(Observation):
@@ -38,7 +39,7 @@ class MessageObservation(Observation):
     def text(self) -> str:
         """Returns the message text."""
         return self._text
-    
+
     def has_intent(self, intent: str) -> bool:
         """Returns True if the observation has the given intent.
 
