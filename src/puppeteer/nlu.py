@@ -3,9 +3,9 @@ from os import walk
 from os.path import basename, join
 from typing import Any, Dict, FrozenSet, Generator, List, Tuple
 
+import spacy
 from snips_nlu import SnipsNLUEngine  # type: ignore
 from snips_nlu.default_configs import CONFIG_EN  # type: ignore
-import spacy
 
 
 class SpacyEngine:
@@ -26,7 +26,7 @@ class SpacyEngine:
         self._nlp = spacy.load(model)
 
     @classmethod
-    def load(cls, model: str = 'en_core_web_lg') -> "SpacyEngine":
+    def load(cls, model: str = "en_core_web_lg") -> "SpacyEngine":
         """Load a SpacyEngine using the given language model.
 
         Args:
@@ -78,17 +78,17 @@ class SpacyEngine:
         quants: List[str] = []
 
         map_spacy_to_ours = {
-            'PERSON': people,
-            'NORP': norgs,
-            'FAC': locs,
-            'ORG': orgs,
-            'GPE': locs,
-            'LOC': locs,
-            'PRODUCT': products,
-            'EVENT': events,
-            'PERCENT': quants,
-            'MONEY': money_amounts,
-            'QUANTITY': quants
+            "PERSON": people,
+            "NORP": norgs,
+            "FAC": locs,
+            "ORG": orgs,
+            "GPE": locs,
+            "LOC": locs,
+            "PRODUCT": products,
+            "EVENT": events,
+            "PERCENT": quants,
+            "MONEY": money_amounts,
+            "QUANTITY": quants,
         }
 
         # Spacy can choke on large data, so chunk if we have to.
@@ -99,11 +99,21 @@ class SpacyEngine:
                     our_list = map_spacy_to_ours[ent.label_]
                     our_list.append(ent.text)
 
-        return {'orgs': orgs, 'norgs': norgs, 'locs': locs, 'people': people, 'products': products,
-                'money': money_amounts, 'events': events, 'quants': quants}
+        return {
+            "orgs": orgs,
+            "norgs": norgs,
+            "locs": locs,
+            "people": people,
+            "products": products,
+            "money": money_amounts,
+            "events": events,
+            "quants": quants,
+        }
 
     @staticmethod
-    def _generate_data_chunks(data: str, chunk_size: int = 2000) -> Generator[str, None, None]:
+    def _generate_data_chunks(
+        data: str, chunk_size: int = 2000
+    ) -> Generator[str, None, None]:
         """Divide a text into a sequence of text chunks.
 
         The method aims to make splits at boundary characters, not splitting
@@ -117,14 +127,18 @@ class SpacyEngine:
             The next chunk.
         """
         # Spacy can croak on large data.
-        boundary_chars = ['.', '!', '?', '=', '*']
+        boundary_chars = [".", "!", "?", "=", "*"]
         sindex = 0
         eindex = chunk_size
         while sindex < len(data):
             if eindex < len(data):
                 if eindex < len(data):
                     move_up_start = eindex
-                    while eindex < len(data) and not data[eindex] in boundary_chars and eindex < move_up_start + 200:
+                    while (
+                        eindex < len(data)
+                        and not data[eindex] in boundary_chars
+                        and eindex < move_up_start + 200
+                    ):
                         eindex = eindex + 1
                     if eindex < len(data) - 2:
                         if data[eindex] in boundary_chars:
@@ -145,7 +159,9 @@ class SnipsEngine:
 
     _engines: Dict[FrozenSet[str], "SnipsEngine"] = dict()
 
-    def __init__(self, engine: SnipsNLUEngine, intent_names: List[str], nlp: SpacyEngine) -> None:
+    def __init__(
+        self, engine: SnipsNLUEngine, intent_names: List[str], nlp: SpacyEngine
+    ) -> None:
         """Initialize a new SnipsEngine.
 
         This method is only intended for class-internal use. For external
@@ -189,7 +205,9 @@ class SnipsEngine:
         return cls._engines[paths]
 
     @classmethod
-    def train(cls, filenames: List[str], intent_names: List[str], nlp: SpacyEngine) -> "SnipsEngine":
+    def train(
+        cls, filenames: List[str], intent_names: List[str], nlp: SpacyEngine
+    ) -> "SnipsEngine":
         """Create and train a SnipsEngine on given data.
 
         Refer to the documentation of class SnipsTriggerDetector for details
@@ -205,13 +223,13 @@ class SnipsEngine:
         """
         json_dict: Dict[str, Any] = {"intents": {}}
         for filename in filenames:
-            skillname = filename.replace('.txt', '').replace('-', '')
+            skillname = filename.replace(".txt", "").replace("-", "")
             skillname = basename(skillname)
             json_dict["intents"][skillname] = {}
             json_dict["intents"][skillname]["utterances"] = []
             with open(filename, "r") as f:
                 filetxt = f.read()
-            for txt in filetxt.split('\n'):
+            for txt in filetxt.split("\n"):
                 if txt.strip() != "":
                     udic: Dict[str, List[Dict[str, str]]] = {"data": []}
                     udic["data"].append({"text": txt})
@@ -248,6 +266,6 @@ class SnipsEngine:
             results = self._engine.parse(sen)
             intent = results["intent"]["intentName"]
             p = results["intent"]["probability"]
-            if intent is not None and intent != 'null':
+            if intent is not None and intent != "null":
                 intents.append((intent, p, sen))
         return sorted(intents, key=lambda tup: tup[1], reverse=True)
