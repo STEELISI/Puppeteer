@@ -4,9 +4,35 @@ from typing import Set
 
 class Observation(abc.ABC):
     """Observation of something that has happened since last time the Puppeteer was run."""
+    pass
 
-    pass  # pylint: disable=W0107
+class IntentObservation(Observation):
+    def __init__(self) -> None:
+        """Initializes a new IntentObservation.
+        """
+        self._intents: Set[str] = set()
 
+    def __str__(self) -> str:
+        """Returns a string representation of this object."""
+        return f"intents: {list(self._intents)}"
+
+    def has_intent(self, intent: str) -> bool:
+        """Returns True if the observation has the given intent.
+
+        Args:
+            intent: The name of the intent.
+
+        Returns:
+            True if the observation has the given intent.
+        """
+        return intent in self._intents
+    def add_intent(self, intent: str) -> None:
+        """Add an intent to this observation.
+
+        Args:
+            intent: The name of the intent.
+        """
+        self._intents.add(intent)
 
 class MessageObservation(Observation):
     """A message received since last time the Puppeteer was run.
@@ -39,7 +65,7 @@ class MessageObservation(Observation):
     def text(self) -> str:
         """Returns the message text."""
         return self._text
-
+    
     def has_intent(self, intent: str) -> bool:
         """Returns True if the observation has the given intent.
 

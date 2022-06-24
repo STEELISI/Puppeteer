@@ -3,14 +3,14 @@ from typing import Any, Dict, List
 
 class Extractions:
     """Class holding a number of extractions for a conversation.
-
+    
     Extractions are key-value pairs that represent facts about the world that have been extracted by the Puppeteer, or
     some other analysis outside of the Puppeteer. They are kept for the entire conversation, and entries may be added,
     modified, and removed, as the conversation goes along.
-
+    
     New Puppeteer extractions are delegated to the TriggerDetector class and are made based on the observations, for
     each turn.
-
+    
     External extractions may be made based on the same observations that the Puppeteer gets, before or after the call
     to the Puppeteer's react() method each turn, or they may use other sources of information not used by the
     Puppeteer.
@@ -23,7 +23,6 @@ class Extractions:
     Handling this is the responsibility of the surrounding code, and there is nothing that prevents other ways of
     handling extractions between turns.
     """
-
     def __init__(self) -> None:
         """Initializes an Extraction object with an empty set of extractions."""
         self._extractions: Dict[str, Any] = {}
@@ -77,9 +76,7 @@ class Extractions:
         Args:
             extractions: Extractions to add.
         """
-        self._extractions.update(
-            extractions._extractions  # pylint: disable=protected-access
-        )
+        self._extractions.update(extractions._extractions)
 
     def has_extraction(self, name: str) -> bool:
         """Returns true if this object has an extraction with the given name.

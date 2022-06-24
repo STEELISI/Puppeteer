@@ -1,31 +1,41 @@
 import abc
 from typing import Any, Dict, List, Optional, Tuple, Type
 
-import matplotlib.pyplot as plt
 import networkx as nx
 import yaml
 
 from .extractions import Extractions
-from .logger import Logger
+from .logging import Logger
 from .observation import Observation
 from .trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
-def _check_dict_fields(
-    cls: Type, d: Dict[str, Any], fields: List[Tuple[str, Type]]
-) -> None:
+def _check_dict_fields(cls: Type, d: Dict[str, Any], fields: List[Tuple[str, Type]]) -> None:
     for (name, typ) in fields:
         if name not in d:
             raise ValueError("Missing field for %s: %s" % (cls.__name__, name))
         elif not isinstance(d[name], typ):
-            raise TypeError(
-                "Field %s for %s should be of type %s, but got %s"
-                % (name, cls.__name__, typ.__name__, type(d["name"]).__name__)
-            )
+            raise TypeError("Field %s for %s should be of type %s, but got %s" % (name, cls.__name__, typ.__name__, type(d[name]).__name__))
     unexpected = frozenset(d).difference(list(zip(*fields))[0])
     if unexpected:
         raise ValueError("Unexpected field(s) for %s: %s" % (cls.__name__, unexpected))
 
+def _check_policy_dict_fields(cls: Type, d: Dict[str, Any], fields: List[Tuple[str, Type]]) -> Dict[str, Any]:
+    for (name, typ) in fields:
+        if name not in d:
+            raise ValueError("Missing field for %s: %s" % (cls.__name__, name))
+        elif not isinstance(d[name], typ):
+            if (name == "absolute_accept_thresh" or name == "min_accept_thresh_w_differential" or \
+                name == "accept_thresh_differential" or name == "kickoff_thresh"):
+                if isinstance(d[name], int):
+                    d[name] = d[name] / 1.0
+            else:
+                raise TypeError("Field %s for %s should be of type %s, but got %s" % (name, cls.__name__, typ.__name__, type(d[name]).__name__))
+    unexpected = frozenset(d).difference(list(zip(*fields))[0])
+    if unexpected:
+        raise ValueError("Unexpected field(s) for %s: %s" % (cls.__name__, unexpected))
+
+    return d
 
 class AgendaAttribute(abc.ABC):
     """Abstract class for attributes of an agenda, such as states, triggers and actions."""
@@ -70,7 +80,7 @@ class AgendaAttribute(abc.ABC):
 
 class State(AgendaAttribute):
     """Class naming and describing a state in an agenda."""
-
+    
     def __init__(self, name: str, description: str = "") -> None:
         """Initialize a new State.
 
@@ -110,12 +120,12 @@ class State(AgendaAttribute):
 
 class Trigger(AgendaAttribute):
     """Class naming and describing a trigger in an agenda.
-
+    
     A trigger is an event that can be detected, and that triggers some effect in the agenda, either a state transition
     or making agenda kickoff possible. This class is used by Agenda to declare the trigger, i.e., it represents the
     fact that the agenda has a trigger with a certain name, and provides a textual description of how the trigger is
     interpreted.
-
+    
     The detection of when a trigger occurs is delegated to the TriggerDetector class. TriggerDetectors are registered
     in the Agenda, specifying, by trigger name, which of the agenda's triggers they are detecting.
     """
@@ -167,13 +177,7 @@ class Action(AgendaAttribute):
     The allowed_repeats limit is the maximum number of times the action may be performed in a conversation.
     """
 
-    def __init__(
-        self,
-        name: str,
-        text: str = "",
-        exclusive_flag: bool = True,
-        allowed_repeats: int = 2,
-    ) -> None:
+    def __init__(self, name: str, text: str = "", exclusive_flag: bool = True, allowed_repeats: int = 2) -> None:
         """Initialize a new Action.
 
         Args:
@@ -186,15 +190,13 @@ class Action(AgendaAttribute):
         self._text = text
         self._exclusive_flag = exclusive_flag
         if allowed_repeats < 1:
-            raise ValueError(
-                "Allowed number of repeats must be positive, got %d" % allowed_repeats
-            )
+            raise ValueError("Allowed number of repeats must be positive, got %d" % allowed_repeats)
         self._allowed_repeats = allowed_repeats
-
+    
     def __repr__(self) -> str:
         """Return a string representation of the action."""
         return "%s: '%s'" % (self._name, self._text)
-
+    
     def __str__(self) -> str:
         """Return a string representation of the action."""
         return repr(self)
@@ -208,7 +210,7 @@ class Action(AgendaAttribute):
     def exclusive_flag(self) -> bool:
         """Returns the exclusivity flag."""
         return self._exclusive_flag
-
+    
     @property
     def allowed_repeats(self) -> int:
         """Returns the number of allowed repeats."""
@@ -220,12 +222,8 @@ class Action(AgendaAttribute):
         Returns:
             A dictionary representation of this action.
         """
-        return {
-            "name": self._name,
-            "text": self._text,
-            "exclusive_flag": self._exclusive_flag,
-            "allowed_repeats": self._allowed_repeats,
-        }
+        return {"name": self._name, "text": self._text, "exclusive_flag": self._exclusive_flag,
+                "allowed_repeats": self._allowed_repeats}
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Action":
@@ -237,16 +235,7 @@ class Action(AgendaAttribute):
         Returns:
             The new object.
         """
-        _check_dict_fields(
-            cls,
-            d,
-            [
-                ("name", str),
-                ("text", str),
-                ("exclusive_flag", bool),
-                ("allowed_repeats", int),
-            ],
-        )
+        _check_dict_fields(cls, d, [("name", str), ("text", str), ("exclusive_flag", bool), ("allowed_repeats", int)])
         return cls(d["name"], d["text"], d["exclusive_flag"], d["allowed_repeats"])
 
 
@@ -258,23 +247,32 @@ class AgendaState:
     The update() method is the main method for updating the agenda level state, based on extractions and observations
     made since the last time step.
     """
-
-    def __init__(self, agenda: "Agenda") -> None:
+    def __init__(self, agenda: "Agenda", 
+                fig = None,
+                ax = None) -> None:
         """Initializes a new AgendaState.
 
         Args:
             agenda: The agenda that this object holds probabilities for.
         """
         self._agenda = agenda
-        self._transition_trigger_probabilities = agenda.trigger_probabilities_cls(
-            agenda, kickoff=False
-        )
-        self._kickoff_trigger_probabilities = agenda.trigger_probabilities_cls(
-            agenda, kickoff=True
-        )
+        self._transition_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=False)
+        self._kickoff_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=True)
         self._state_probabilities = agenda.state_probabilities_cls(agenda)
         self._pos = None
         self._log = Logger()
+        if fig != None and ax != None:
+            self._fig = fig
+            self._ax = ax
+            self._g = nx.MultiDiGraph()
+            # Add states
+            for s in self._agenda.state_names:
+                self._g.add_node(s)
+            self._g.add_node('ERROR_STATE')
+            # Add transitions
+            for s0 in self._agenda.state_names:
+                for s1 in self._agenda.transition_connected_state_names(s0):
+                    self._g.add_edge(s0, s1)
 
     @property
     def transition_trigger_probabilities(self) -> "TriggerProbabilities":
@@ -291,12 +289,12 @@ class AgendaState:
         """Returns the state probabilities part of the agenda state."""
         return self._state_probabilities
 
-    def update(
-        self,
-        actions: List[Action],
-        observations: List[Observation],
-        old_extractions: Extractions,
-    ) -> Extractions:
+    def update(self,
+               actions: List[Action],
+               observations: List[Observation],
+               old_extractions: Extractions,
+               active_agendas: Dict[str, "Agenda"],
+               ) -> Extractions:
         """Updates the agenda-level state.
 
         Updating the agenda level state, based on extractions and observations made since the last time step.
@@ -311,18 +309,15 @@ class AgendaState:
         """
         self._log.begin(f"Updating agenda {self._agenda.name}")
 
-        self._log.begin("Kickoff trigger probabilities")
-        new_extractions = self._kickoff_trigger_probabilities.update(
-            observations, old_extractions
-        )
-        self._log.end()
+        if self._agenda.name not in active_agendas: #check for kickoff trigger if this agenda is not in the active list
+            self._log.begin("Kickoff trigger probabilities")
+            new_extractions = self._kickoff_trigger_probabilities.update(observations, old_extractions)
+            self._log.end()
 
-        self._log.begin("Transition trigger probabilities")
-        extractions = self._transition_trigger_probabilities.update(
-            observations, old_extractions
-        )
-        new_extractions.update(extractions)
-        self._log.end()
+        else: #if this agenda has been active, check for transition triggers
+            self._log.begin("Transition trigger probabilities")
+            new_extractions = self._transition_trigger_probabilities.update(observations, old_extractions)
+            self._log.end()
 
         self._log.begin("State probabilities")
         self._state_probabilities.update(self._transition_trigger_probabilities, actions)
@@ -336,57 +331,30 @@ class AgendaState:
         """Reset probabilities to the initial values for a newly started agenda."""
         self._state_probabilities.reset()
 
-    def plot_state(self, fig: plt.Figure) -> None:
-        """Plot the state graph.
-
-        Args:
-            fig: The figure to plot to.
-        """
-        g = nx.MultiDiGraph()
-
-        # Add states
-        for s in self._agenda.state_names:
-            g.add_node(s)
-        g.add_node("ERROR_STATE")
-
-        for s0 in self._agenda.state_names:
-            # Add transitions
-            for s1 in self._agenda.transition_connected_state_names(s0):
-                g.add_edge(s0, s1)
-
+    def plot(self) -> None:
+        """ Plot the state graph."""
+        self._ax.clear()
+        
         # Color nodes according to probability map.
-        color_transition = [
-            "#fff0e6",
-            "#ffe0cc",
-            "#ffd1b3",
-            "#ffc299",
-            "#ffb380",
-            "#ffa366",
-            "#ff944d",
-            "#ff8533",
-            "#ff751a",
-            "#ff6600",
-        ]
-        color_map = []
+        color_transition = ['#fff0e6', '#ffe0cc', '#ffd1b3', '#ffc299', '#ffb380', '#ffa366', '#ff944d', '#ff8533',
+                            '#ff751a', '#ff6600']
+
         labels = {}
-        for node in g:
+        color_map = []
+        for node in self._g:
             prob = self._state_probabilities.probability(node)
-            labels[node] = "%s\np=%.2f" % (node, prob)
+            labels[node] = '{}\np={:.2f}'.format(node, prob)
 
-            prob = int(round(prob * 10))
-            if prob > 0:
-                prob = prob - 1
+            lvl = int(round(prob * 10)) # level or index in color_transition
+            if lvl > 0:
+                lvl = lvl - 1
 
-            if prob < len(color_transition):
-                color_map.append(color_transition[prob])
+            if lvl < len(color_transition):
+                color_map.append(color_transition[lvl])
             else:
-                color_map.append("grey")
-
-        # Draw
-        plt.figure(fig.number)
-        if self._pos is None:
-            self._pos = nx.circular_layout(g)
-        nx.draw(g, pos=self._pos, node_color=color_map, labels=labels)
+                color_map.append('grey')
+        self._ax.set_title(self._agenda.name)
+        nx.draw(G=self._g, pos=nx.circular_layout(self._g), ax=self._ax, node_color=color_map, labels=labels, node_size=2000)
 
 
 class TriggerProbabilities(abc.ABC):
@@ -430,9 +398,7 @@ class TriggerProbabilities(abc.ABC):
         return self._trigger_detectors
 
     @abc.abstractmethod
-    def update(
-        self, observations: List[Observation], old_extractions: Extractions
-    ) -> Extractions:
+    def update(self, observations: List[Observation], old_extractions: Extractions) -> Extractions:
         """Updates trigger probabilities based on extractions and observations since the last time step.
 
         Trigger probabilities represent all information in observations that is relevant for state transition between
@@ -454,14 +420,13 @@ class TriggerProbabilities(abc.ABC):
             New extractions made based on the observations.
         """
         raise NotImplementedError()
-
+        
 
 class DefaultTriggerProbabilities(TriggerProbabilities):
     """Handles trigger probabilities for an ongoing conversation.
 
     This is the default TriggerProbabilities implementation. See class TriggerProbabilities for more details.
     """
-
     def __init__(self, agenda: "Agenda", kickoff: bool = False):
         """Initializes a new DefaultTriggerProbabilities object.
 
@@ -473,9 +438,7 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
         super(DefaultTriggerProbabilities, self).__init__(agenda, kickoff)
         self._log = Logger()
 
-    def update(
-        self, observations: List[Observation], old_extractions: Extractions
-    ) -> Extractions:
+    def update(self, observations: List[Observation], old_extractions: Extractions) -> Extractions:
         """Updates trigger probabilities based on extractions and observations since the last time step.
 
         See method documentation in superclass for more details.
@@ -488,18 +451,12 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
             New extractions made based on the observations.
         """
         trigger_map: Dict[str, float] = {}
-        non_trigger_probs: List[float] = []
         new_extractions = Extractions()
-
+       
         for trigger_detector in self.trigger_detectors:
-            self._log.begin(
-                f"Trigger detector with trigger names {trigger_detector.trigger_names}"
-            )
-            (
-                trigger_map_out,
-                non_trigger_prob,
-                extractions,
-            ) = trigger_detector.trigger_probabilities(observations, old_extractions)
+            #print(trigger_detector.trigger_names)
+            self._log.begin(f"Trigger detector with trigger names {trigger_detector.trigger_names}")
+            trigger_map_out, extractions = trigger_detector.trigger_probabilities(observations, old_extractions)
 
             if extractions.names:
                 self._log.begin("Extractions")
@@ -509,7 +466,9 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
             new_extractions.update(extractions)
 
             self._log.begin("Triggers")
-            non_trigger_probs.append(non_trigger_prob)
+            # if not trigger_map_out:
+            #     self._log.add("no trigger(s) detected")
+
             for (trigger_name, p) in trigger_map_out.items():
                 self._log.add(f"{trigger_name}: {p:.3f}")
                 if trigger_name in self._probabilities:
@@ -525,8 +484,8 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
         else:
             non_trigger_prob = 1.0
 
-        sum_total = sum(trigger_map.values()) + non_trigger_prob
-
+        # Normalization
+        sum_total = sum(trigger_map.values()) + non_trigger_prob        
         non_trigger_prob = non_trigger_prob / sum_total
         for intent in trigger_map:
             trigger_map[intent] = trigger_map[intent] / sum_total
@@ -536,7 +495,7 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
                 self._probabilities[t] = trigger_map[t]
             else:
                 self._probabilities[t] = 0.0
-
+        
         self._non_trigger_prob = non_trigger_prob
 
         if trigger_map:
@@ -600,9 +559,7 @@ class StateProbabilities(abc.ABC):
                 self._probabilities[state_name] = 0.0
 
     @abc.abstractmethod
-    def update(
-        self, trigger_probabilities: TriggerProbabilities, actions: List[Action]
-    ) -> None:
+    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
         """Updates state probabilities based on trigger probabilities.
 
         Trigger probabilities represent all information in observations that is relevant for state transition. This
@@ -622,7 +579,6 @@ class DefaultStateProbabilities(StateProbabilities):
 
     This is the default StateProbabilities implementation. See class StateProbabilities for more details.
     """
-
     def __init__(self, agenda: "Agenda"):
         """Initializes a new DefaultStateProbabilities object.
 
@@ -632,9 +588,7 @@ class DefaultStateProbabilities(StateProbabilities):
         super(DefaultStateProbabilities, self).__init__(agenda)
         self._log = Logger()
 
-    def update(
-        self, trigger_probabilities: TriggerProbabilities, actions: List[Action]
-    ) -> None:
+    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
         """Updates state probabilities based on trigger probabilities.
 
         Trigger probabilities represent all information in observations that is relevant for state transition. This
@@ -646,58 +600,65 @@ class DefaultStateProbabilities(StateProbabilities):
             trigger_probabilities: The trigger probabilities.
             actions: Actions performed in the last turn.
         """
+
+        """ We don't need this for multiple agendas
+
         # Check if the last of the actions taken "belongs" to this agenda. Earlier
         # actions may be the finishing actions of a deactivated agenda.
+        #print('actions: {}'.format(actions))
         if actions and not actions[-1] in self._agenda.actions:
             return
 
+        """
+        
         current_probability_map = self._probabilities
         trigger_map = trigger_probabilities.probabilities
         non_event_prob = trigger_probabilities.non_trigger_prob
 
         # Set up our new prob map.
-        new_probability_map = {}
-        for st in self._agenda.state_names:
-            new_probability_map[st] = 0.0
-        new_probability_map["ERROR_STATE"] = 0.0
+        new_probability_map = {st: 0.0 for st in self._agenda.state_names}
+        new_probability_map['ERROR_STATE'] = 0.0
 
         # Chance we actually have an event:
         p_event = 1.0 - non_event_prob
+        #print('p_event: {}'.format(p_event))
+        #print('current_prob_map: {}'.format(current_probability_map))
+        #print('trigger_map: {}'.format(trigger_map))
 
-        # For each state in the machine, do:
+        # # 1) Update state probability according to to_move
         for st in self._agenda.state_names:
+            # Only if the state is not terminus
+            if st in self._agenda.terminus_names:
+                continue
             to_move = current_probability_map[st] * p_event
-            new_probability_map[st] = max(
-                0.05, current_probability_map[st] - to_move, new_probability_map[st]
-            )
+            new_probability_map[st] = max(0.0, current_probability_map[st] - to_move)
 
-        # For each state in the machine, do:
+        # 2) Update state probability according to trigger_map
         for st in self._agenda.state_names:
-            to_move = current_probability_map[st] * p_event
+            # Only if the state is not terminus
+            if st in self._agenda.terminus_names:
+                continue
 
+            to_move = current_probability_map[st] * p_event
             if round(to_move, 1) > 0.0:
                 for event in trigger_map:
                     trans_prob = to_move * trigger_map[event]
                     if event in self._agenda.transition_trigger_names(st):
                         st2 = self._agenda.transition_end_state_name(st, event)
-                        new_probability_map[st2] = new_probability_map[st2] + trans_prob
+                        new_probability_map[st2] += min(1.0, trans_prob)
                         # Decrease our confidence that we've had some problems following the script, previously.
                         # Not part of paper.
-                        new_probability_map["ERROR_STATE"] = max(
-                            0.05, new_probability_map["ERROR_STATE"] - trans_prob
-                        )
+                        new_probability_map['ERROR_STATE'] = max(0.0, new_probability_map['ERROR_STATE'] - trans_prob)
                     else:
                         # XXX Downgrade our probabilities if we don't have an event that matches a transition?
                         # for this particular state.
                         # Not part of paper.
-                        new_probability_map[st] = max(
-                            0.05, current_probability_map[st] - trigger_map[event]
-                        )
+                        # new_probability_map[st] = max(0.05, current_probability_map[st]-trigger_map[event])
 
                         # Up our confidence that we've had some problems following the script.
-                        new_probability_map["ERROR_STATE"] = (
-                            new_probability_map["ERROR_STATE"] + trans_prob
-                        )
+                        new_probability_map['ERROR_STATE'] = new_probability_map['ERROR_STATE'] + trans_prob
+                        # if st not in self._agenda.terminus_names: 
+                        #     new_probability_map[st] = max(0.00, current_probability_map[st] - trigger_map[event])
 
         self._probabilities = new_probability_map
 
@@ -721,7 +682,6 @@ class AgendaPolicy(abc.ABC):
     methods and has been updated by the Puppeteer to take new observations and/or extractions into account, before the
     method call.
     """
-
     def __init__(self, agenda: "Agenda") -> None:
         """Initializes a new AgendaPolicy.
 
@@ -742,7 +702,7 @@ class AgendaPolicy(abc.ABC):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    @abc.abstractmethod    
     def is_done(self, state: AgendaState) -> bool:
         """Returns true if the agenda is likely in a terminus state.
 
@@ -754,7 +714,7 @@ class AgendaPolicy(abc.ABC):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    @abc.abstractmethod    
     def can_kick_off(self, state: AgendaState) -> bool:
         """Returns true if the agenda is likely in a state where it can kick off.
 
@@ -766,13 +726,9 @@ class AgendaPolicy(abc.ABC):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def pick_actions(
-        self,
-        state: AgendaState,
-        action_history: List[Action],
-        turns_without_progress: int,
-    ) -> List[Action]:
+    @abc.abstractmethod    
+    def pick_actions(self, state: AgendaState, action_history: List[Action],
+                     turns_without_progress: int) -> List[Action]:
         """Picks zero or more appropriate actions to take, given the current state of the agenda.
 
         Args:
@@ -807,8 +763,8 @@ class AgendaPolicy(abc.ABC):
             The new policy object.
         """
         raise NotImplementedError()
-
-
+        
+        
 class DefaultAgendaPolicy(AgendaPolicy):
     """Handles agenda-level decisions about behavior.
 
@@ -838,17 +794,15 @@ class DefaultAgendaPolicy(AgendaPolicy):
     See AgendaPolicy documentation for further details.
     """
 
-    def __init__(
-        self,
-        agenda: "Agenda",
-        reuse: bool = False,
-        max_transitions: int = 5,
-        absolute_accept_thresh: float = 0.6,
-        min_accept_thresh_w_differential: float = 0.2,
-        accept_thresh_differential: float = 0.1,
-        # TODO Convention right now: Have to be sure of kickoff.
-        kickoff_thresh: float = 1.0,
-    ) -> None:
+    def __init__(self,
+                 agenda: "Agenda",
+                 reuse: bool = False,
+                 max_transitions: int = 5,
+                 absolute_accept_thresh: float = 0.6,
+                 min_accept_thresh_w_differential: float = 0.2,
+                 accept_thresh_differential: float = 0.1,
+                 # TODO Convention right now: Have to be sure of kickoff.
+                 kickoff_thresh: float = 1.0) -> None:
         """Initializes a new DefaultAgendaPolicy.
 
         Args:
@@ -869,21 +823,14 @@ class DefaultAgendaPolicy(AgendaPolicy):
         # TODO The max_transitions field in currently unused. Not used by turducken
         self._max_transitions = max_transitions
         if absolute_accept_thresh <= 0.0:
-            raise ValueError(
-                "absolute_accept_thresh must be positive, got %f" % absolute_accept_thresh
-            )
+            raise ValueError("absolute_accept_thresh must be positive, got %f" % absolute_accept_thresh)
         self._absolute_accept_thresh = absolute_accept_thresh
         if min_accept_thresh_w_differential <= 0.0:
-            raise ValueError(
-                "min_accept_thresh_w_differential must be positive, got %f"
-                % min_accept_thresh_w_differential
-            )
+            raise ValueError("min_accept_thresh_w_differential must be positive, got %f" %
+                             min_accept_thresh_w_differential)
         self._min_accept_thresh_w_differential = min_accept_thresh_w_differential
         if accept_thresh_differential <= 0.0:
-            raise ValueError(
-                "accept_thresh_differential must be positive, got %f"
-                % accept_thresh_differential
-            )
+            raise ValueError("accept_thresh_differential must be positive, got %f" % accept_thresh_differential)
         self._accept_thresh_differential = accept_thresh_differential
         if kickoff_thresh <= 0.0:
             raise ValueError("kickoff_thresh must be positive, got %f" % kickoff_thresh)
@@ -896,17 +843,12 @@ class DefaultAgendaPolicy(AgendaPolicy):
         Returns:
             A dictionary representation of the state of this policy.
         """
-        field_names = [
-            "_reuse",
-            "_max_transitions",
-            "_absolute_accept_thresh",
-            "_min_accept_thresh_w_differential",
-            "_accept_thresh_differential",
-            "_kickoff_thresh",
-        ]
+        field_names = ["_reuse", "_max_transitions", "_absolute_accept_thresh",
+                       "_min_accept_thresh_w_differential",
+                       "_accept_thresh_differential", "_kickoff_thresh"]
         d = {f[1:]: getattr(self, f) for f in field_names}
         return d
-
+    
     @classmethod
     def from_dict(cls, d: Dict[str, Any], agenda: "Agenda") -> "DefaultAgendaPolicy":
         """Returns a new policy object, based on the dictionary representation of its state.
@@ -918,27 +860,20 @@ class DefaultAgendaPolicy(AgendaPolicy):
         Returns:
             The new policy object.
         """
-        _check_dict_fields(
-            cls,
-            d,
-            [
-                ("reuse", bool),
-                ("max_transitions", int),
-                ("absolute_accept_thresh", float),
-                ("min_accept_thresh_w_differential", float),
-                ("accept_thresh_differential", float),
-                ("kickoff_thresh", float),
-            ],
-        )
-        return cls(
-            agenda,
-            d["reuse"],
-            d["max_transitions"],
-            d["absolute_accept_thresh"],
-            d["min_accept_thresh_w_differential"],
-            d["accept_thresh_differential"],
-            d["kickoff_thresh"],
-        )
+        d = _check_policy_dict_fields(cls, d, [("reuse", bool), ("max_transitions", int), ("absolute_accept_thresh", float),
+                                    ("min_accept_thresh_w_differential", float), ("accept_thresh_differential", float),
+                                    ("kickoff_thresh", float)])
+        return cls(agenda, d["reuse"], d["max_transitions"],
+                   d["absolute_accept_thresh"],
+                   d["min_accept_thresh_w_differential"],
+                   d["accept_thresh_differential"],
+                   d["kickoff_thresh"])
+
+    def __str__(self):
+        return("reuse: {}, max_transitions: {}, absolute_accept_thresh: {}, min_accept_thresh_w_differential: {}, "\
+                "accept_thresh_differential: {}, kickoff_thresh: {}".format(self._reuse, self._max_transitions, \
+                self._absolute_accept_thresh, self._min_accept_thresh_w_differential, self._accept_thresh_differential, \
+                self._kickoff_thresh))
 
     def made_progress(self, state: AgendaState) -> bool:
         """Returns true if the agenda made progress in the last turn.
@@ -951,7 +886,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
         """
         non_event_probability = state.transition_trigger_probabilities.non_trigger_prob
         error_state_probability = state.state_probabilities.probabilities["ERROR_STATE"]
-        return non_event_probability <= 0.4 and error_state_probability <= 0.8
+        return non_event_probability <= 0.4 and error_state_probability <= .8
 
     def is_done(self, state: AgendaState) -> bool:
         """Returns true if the agenda is likely in a terminus state.
@@ -963,28 +898,20 @@ class DefaultAgendaPolicy(AgendaPolicy):
             True if the agenda is likely in a terminus state.
         """
         best = None
-
-        # For state by decresing probabilities that we're in that state.
+            
+        # For state by decresing probabilities that we're in that state. 
         # TODO Probably simpler: just look at best and second-best state
         # TODO Don't access probability map directly
         probability_map = state.state_probabilities.probabilities
-        sorted_states = {
-            k: v
-            for k, v in sorted(
-                probability_map.items(), key=lambda item: item[1], reverse=True
-            )
-        }
+        sorted_states = {k: v for k, v in sorted(probability_map.items(), key=lambda item: item[1], reverse=True)}
         for (rank, st) in enumerate(sorted_states):
             if st in self._agenda.terminus_names:
                 # If this is an accept state, we can set our best exit candidate.
                 if rank == 0 and probability_map[st] >= self._absolute_accept_thresh:
                     return True
-                elif (
-                    rank == 0
-                    and probability_map[st] >= self._min_accept_thresh_w_differential
-                ):
+                elif rank == 0 and probability_map[st] >= self._min_accept_thresh_w_differential:
                     best = probability_map[st]
-            # If we have an exit candidate,
+            # If we have an exit candidate, 
             if best is not None and rank == 1:
                 if best - probability_map[st] >= self._accept_thresh_differential:
                     return True
@@ -1002,12 +929,8 @@ class DefaultAgendaPolicy(AgendaPolicy):
         non_kickoff_probability = state.kickoff_trigger_probabilities.non_trigger_prob
         return 1.0 - non_kickoff_probability >= self._kickoff_thresh
 
-    def pick_actions(
-        self,
-        state: AgendaState,
-        action_history: List[Action],
-        turns_without_progress: int,
-    ) -> List[Action]:
+    def pick_actions(self, state: AgendaState, action_history: List[Action],
+                     turns_without_progress: int) -> List[Action]:
         """Picks zero or more appropriate actions to take, given the current state of the agenda.
 
         Args:
@@ -1019,9 +942,9 @@ class DefaultAgendaPolicy(AgendaPolicy):
             A list of actions to take.
         """
         actions_taken: List[Action] = []
-
+        
         # Action map - maps states to a list of tuples of:
-        # (action_name, function, arguments,
+        # (action_name, function, arguments, 
         #  boolean to indicate if this an exclusive action that cannot be used
         #  with other actions, number of allowed repeats for this action)
         if turns_without_progress == 0:
@@ -1030,30 +953,22 @@ class DefaultAgendaPolicy(AgendaPolicy):
         else:
             self._log.add("Using stall action map.")
             action_map = self._agenda.stall_action_map
-
+            
         # Work over the most likely state, to least likely, taking the first
         # actions we are allowed to given repeat allowance & exclusivity.
         # for state by decreasing probabilities that we're in that state:
-        for st in {
-            k: v
-            for k, v in sorted(
-                state.state_probabilities.probabilities.items(),
-                key=lambda item: item[1],
-                reverse=True,
-            )
-        }:
+        for st in {k: v for k, v in sorted(state.state_probabilities.probabilities.items(), key=lambda item: item[1],
+                                           reverse=True)}:
             # XXX Maybe need to check likelihood.
             if st in action_map:
-                self._log.add(
-                    f"State {st} is the most likely state that has actions defined."
-                )
+                self._log.add(f"State {st} is the most likely state that has actions defined.")
                 for action_name in action_map[st]:
                     action = self._agenda.action(action_name)
                     exclusive_flag = action.exclusive_flag
                     allowed_repeats = action.allowed_repeats
-
+                    
                     num_times_action_was_used = action_history.count(action)
-
+                    
                     if num_times_action_was_used < allowed_repeats:
                         if exclusive_flag and actions_taken:
                             # Can't do an exclusive action if a non-exclusive
@@ -1075,13 +990,11 @@ class DefaultAgendaPolicy(AgendaPolicy):
                         for action_name in self._agenda.stall_action_map[st]:
                             action = self._agenda.action(action_name)
                             allowed_repeats = action.allowed_repeats
-
+                            
                             num_times_action_was_used = action_history.count(action)
-
+                            
                             if num_times_action_was_used < allowed_repeats:
-                                self._log.add(
-                                    f"Using stall action {action.name} instead."
-                                )
+                                self._log.add(f"Using stall action {action.name} instead.")
                                 return [action]
                     self._log.add("No stall actions to take either.")
                 else:
@@ -1126,16 +1039,11 @@ class Agenda:
     - Loading an agenda from file using the load() method. In this case, the method returns a ready-to-use agenda.
     """
 
-    def __init__(
-        self,
-        name: str,
-        policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
-        state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
-        trigger_probabilities_cls: Type[
-            TriggerProbabilities
-        ] = DefaultTriggerProbabilities,
-    ) -> None:
-        """Initialize a new Agenda.
+    def __init__(self, name: str,
+                 policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
+                 state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
+                 trigger_probabilities_cls: Type[TriggerProbabilities] = DefaultTriggerProbabilities) -> None:
+        """ Initialize a new Agenda.
 
         Args:
             name: The name of the agenda.
@@ -1262,9 +1170,7 @@ class Agenda:
         if state_name not in self._transitions:
             raise ValueError("No state with name '%s'" % state_name)
         elif trigger_name not in self._transitions[state_name]:
-            raise ValueError(
-                "No trigger with name '%s' for state '%s'" % (trigger_name, state_name)
-            )
+            raise ValueError("No trigger with name '%s' for state '%s'" % (trigger_name, state_name))
         return self._transitions[state_name][trigger_name]
 
     def transition_connected_state_names(self, state_name: str) -> List[str]:
@@ -1306,7 +1212,6 @@ class Agenda:
         Returns:
             A dictionary representation of this agenda.
         """
-
         def to_dict(x: Any) -> Any:
             if isinstance(x, str):
                 return x
@@ -1320,31 +1225,22 @@ class Agenda:
                 return {k: to_dict(v) for (k, v) in x.items()}
             else:
                 return x.to_dict()
-
         d = {"name": self._name}
         # Handle named fields separately
         field_names = ["_states", "_actions", "_transition_triggers", "_kickoff_triggers"]
         d.update({f[1:]: to_dict(list(getattr(self, f).values())) for f in field_names})
         # Other fields stored as-is
-        field_names = [
-            "_start_state_name",
-            "_terminus_names",
-            "_transitions",
-            "_action_map",
-            "_stall_action_map",
-            "_policy",
-        ]
+        field_names = ["_start_state_name", "_terminus_names", 
+                       "_transitions", "_action_map",
+                       "_stall_action_map", "_policy"]
         d.update({f[1:]: to_dict(getattr(self, f)) for f in field_names})
         return d
 
     @classmethod
-    def _from_dict(
-        cls,
-        d: Dict[str, Any],
-        policy_cls: Type[AgendaPolicy],
-        state_probabilities_cls: Type[StateProbabilities],
-        trigger_probabilities_cls: Type[TriggerProbabilities],
-    ) -> "Agenda":
+    def _from_dict(cls, d: Dict[str, Any],
+                   policy_cls: Type[AgendaPolicy],
+                   state_probabilities_cls: Type[StateProbabilities],
+                   trigger_probabilities_cls: Type[TriggerProbabilities]) -> "Agenda":
         """Returns a new Agenda object, based on its dictionary representation.
 
         Args:
@@ -1357,53 +1253,30 @@ class Agenda:
             The new agenda.
         """
         # Replace with objects in d, where appropriate.
-        def from_dict_list(
-            dict_list: List[Dict[str, Any]], new_cls: Type[AgendaAttribute]
-        ) -> Dict[str, Any]:
+        def from_dict_list(dict_list: List[Dict[str, Any]], new_cls: Type[AgendaAttribute]) -> Dict[str, Any]:
             if not isinstance(dict_list, list):
                 raise TypeError("Expected list of dicts for class %s" % new_cls.__name__)
             obj_dict = {}
             for dd in dict_list:
                 if not isinstance(dd, dict):
-                    raise TypeError(
-                        "Expected list of dicts for class %s" % new_cls.__name__
-                    )
+                    raise TypeError("Expected list of dicts for class %s" % new_cls.__name__)
                 new_obj = new_cls.from_dict(dd)
                 obj_dict[new_obj.name] = new_obj
             return obj_dict
-
-        _check_dict_fields(
-            Agenda,
-            d,
-            [
-                ("states", object),
-                ("kickoff_triggers", object),
-                ("transition_triggers", object),
-                ("actions", object),
-                ("policy", object),
-                ("name", str),
-                ("start_state_name", str),
-                ("terminus_names", list),
-                ("transitions", dict),
-                ("action_map", dict),
-                ("stall_action_map", dict),
-            ],
-        )
+        _check_dict_fields(Agenda, d, [("states", object), ("kickoff_triggers", object),
+                                       ("transition_triggers", object), ("actions", object), ("policy", object),
+                                       ("name", str), ("start_state_name", str), ("terminus_names", list),
+                                       ("transitions", dict), ("action_map", dict), ("stall_action_map", dict)])
         states = from_dict_list(d["states"], State)
         kickoff_triggers = from_dict_list(d["kickoff_triggers"], Trigger)
         transition_triggers = from_dict_list(d["transition_triggers"], Trigger)
         actions = from_dict_list(d["actions"], Action)
 
-        agenda = cls(
-            d["name"],
-            policy_cls=policy_cls,
-            state_probabilities_cls=state_probabilities_cls,
-            trigger_probabilities_cls=trigger_probabilities_cls,
-        )
+        agenda = cls(d["name"], policy_cls=policy_cls, state_probabilities_cls=state_probabilities_cls,
+                     trigger_probabilities_cls=trigger_probabilities_cls)
         # Special handling of policy
-        agenda._policy = policy_cls.from_dict(  # pylint: disable=W0212
-            d["policy"], agenda
-        )
+        agenda._policy = policy_cls.from_dict(d["policy"], agenda)
+        #print(str(agenda._policy))
         # Restore all other fields, as stored in dict
         for state in states.values():
             agenda.add_state(state)
@@ -1420,48 +1293,27 @@ class Agenda:
             agenda.add_terminus(name)
         for start_state_name in d["transitions"]:
             if not isinstance(start_state_name, str):
-                raise TypeError(
-                    "Expected string for start state name for transition, got: %s"
-                    % type(start_state_name)
-                )
+                raise TypeError("Expected string for start state name for transition, got: %s" % type(start_state_name))
             for trigger_name in d["transitions"][start_state_name]:
                 if not isinstance(trigger_name, str):
-                    raise TypeError(
-                        "Expected string for trigger name for transition, got: %s"
-                        % type(trigger_name)
-                    )
+                    raise TypeError("Expected string for trigger name for transition, got: %s" % type(trigger_name))
                 end_state_name = d["transitions"][start_state_name][trigger_name]
                 if not isinstance(end_state_name, str):
-                    raise TypeError(
-                        "Expected string for end state name for transition, got: %s"
-                        % type(end_state_name)
-                    )
+                    raise TypeError("Expected string for end state name for transition, got: %s" % type(end_state_name))
                 agenda.add_transition(start_state_name, trigger_name, end_state_name)
         for state_name in d["action_map"]:
             if not isinstance(state_name, str):
-                raise TypeError(
-                    "Expected string for state name for action map, got: %s"
-                    % type(state_name)
-                )
+                raise TypeError("Expected string for state name for action map, got: %s" % type(state_name))
             for action_name in d["action_map"][state_name]:
                 if not isinstance(action_name, str):
-                    raise TypeError(
-                        "Expected string for action name for action map, got: %s"
-                        % type(action_name)
-                    )
+                    raise TypeError("Expected string for action name for action map, got: %s" % type(action_name))
                 agenda.add_action_for_state(action_name, state_name)
         for state_name in d["stall_action_map"]:
             if not isinstance(state_name, str):
-                raise TypeError(
-                    "Expected string for state name for stall action map, got: %s"
-                    % type(state_name)
-                )
+                raise TypeError("Expected string for state name for stall action map, got: %s" % type(state_name))
             for action_name in d["stall_action_map"][state_name]:
                 if not isinstance(action_name, str):
-                    raise TypeError(
-                        "Expected string for stall action name for action map, got: %s"
-                        % type(action_name)
-                    )
+                    raise TypeError("Expected string for stall action name for action map, got: %s" % type(action_name))
                 agenda.add_stall_action_for_state(action_name, state_name)
         return agenda
 
@@ -1495,9 +1347,7 @@ class Agenda:
             state_name: The terminus state name to add.
         """
         if state_name not in self._states:
-            raise ValueError(
-                "Invalid terminus state, no state with name '%s'" % state_name
-            )
+            raise ValueError("Invalid terminus state, no state with name '%s'" % state_name)
         elif state_name in self._terminus_names:
             raise ValueError("Terminus state already set: '%s'" % state_name)
         self._terminus_names.append(state_name)
@@ -1509,9 +1359,7 @@ class Agenda:
             trigger: The trigger to add.
         """
         if trigger.name in self._transition_triggers:
-            raise ValueError(
-                "Agenda already has a transition trigger with name '%s'" % trigger.name
-            )
+            raise ValueError("Agenda already has a transition trigger with name '%s'" % trigger.name)
         self._transition_triggers[trigger.name] = trigger
 
     def add_kickoff_trigger(self, trigger: Trigger) -> None:
@@ -1521,14 +1369,10 @@ class Agenda:
             trigger: The kickoff trigger to add.
         """
         if trigger.name in self._kickoff_triggers:
-            raise ValueError(
-                "Agenda already has a kickoff trigger with name '%s'" % trigger.name
-            )
+            raise ValueError("Agenda already has a kickoff trigger with name '%s'" % trigger.name)
         self._kickoff_triggers[trigger.name] = trigger
 
-    def add_transition(
-        self, start_state_name: str, trigger_name: str, end_state_name: str
-    ) -> None:
+    def add_transition(self, start_state_name: str, trigger_name: str, end_state_name: str) -> None:
         """Add a transition to the agenda.
 
         Args:
@@ -1537,27 +1381,16 @@ class Agenda:
             end_state_name: The name of the end (destination) state of the transition.
         """
         if start_state_name not in self._transitions:
-            raise ValueError(
-                "Invalid start state for transition, no state with name '%s'"
-                % start_state_name
-            )
+            raise ValueError("Invalid start state for transition, no state with name '%s'" % start_state_name)
         elif trigger_name not in self._transition_triggers:
-            raise ValueError(
-                "Invalid trigger for transition, no transition trigger with name '%s'"
-                % trigger_name
-            )
+            raise ValueError("Invalid trigger for transition, no transition trigger with name '%s'" % trigger_name)
         elif end_state_name not in self._states:
-            raise ValueError(
-                "Invalid end state for transition, no state with name '%s'"
-                % end_state_name
-            )
+            raise ValueError("Invalid end state for transition, no state with name '%s'" % end_state_name)
         elif trigger_name in self._transitions[start_state_name]:
-            raise ValueError(
-                "End state for transition, from state '%s' already set for trigger '%s'"
-                % (start_state_name, trigger_name)
-            )
+            raise ValueError("End state for transition, from state '%s' already set for trigger '%s'" %
+                             (start_state_name, trigger_name))
         self._transitions[start_state_name][trigger_name] = end_state_name
-
+    
     def add_action(self, action: Action) -> None:
         """Add an action to the agenda.
 
@@ -1578,15 +1411,11 @@ class Agenda:
         if action_name not in self._actions:
             raise ValueError("Agenda has no action with name '%s'" % action_name)
         elif state_name not in self._states:
-            raise ValueError(
-                "Invalid state for action, no state with name '%s'" % state_name
-            )
+            raise ValueError("Invalid state for action, no state with name '%s'" % state_name)
         elif action_name in self._action_map[state_name]:
-            raise ValueError(
-                "State '%s' already has action with name '%s'" % (state_name, action_name)
-            )
+            raise ValueError("State '%s' already has action with name '%s'" % (state_name, action_name))
         self._action_map[state_name].append(action_name)
-
+    
     def add_stall_action_for_state(self, action_name: str, state_name: str) -> None:
         """Add a stall action to a state of the agenda.
 
@@ -1597,14 +1426,9 @@ class Agenda:
         if action_name not in self._actions:
             raise ValueError("Agenda has no action with name '%s'" % action_name)
         elif state_name not in self._states:
-            raise ValueError(
-                "Invalid state for stall action, no state with name '%s'" % state_name
-            )
+            raise ValueError("Invalid state for stall action, no state with name '%s'" % state_name)
         elif action_name in self._stall_action_map[state_name]:
-            raise ValueError(
-                "State '%s' already has stall action with name '%s'"
-                % (state_name, action_name)
-            )
+            raise ValueError("State '%s' already has stall action with name '%s'" % (state_name, action_name))
         self._stall_action_map[state_name].append(action_name)
 
     def add_transition_trigger_detector(self, trigger_detector: TriggerDetector) -> None:
@@ -1633,17 +1457,11 @@ class Agenda:
             yaml.dump(self._to_dict(), file, default_flow_style=False, sort_keys=False)
 
     @classmethod
-    def load(
-        cls,
-        filename: str,
-        trigger_detector_loader: TriggerDetectorLoader,
-        snips_multi_engine: bool = False,
-        policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
-        state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
-        trigger_probabilities_cls: Type[
-            TriggerProbabilities
-        ] = DefaultTriggerProbabilities,
-    ) -> "Agenda":
+    def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
+             snips_multi_engine: bool = False,
+             policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
+             state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
+             trigger_probabilities_cls: Type[TriggerProbabilities] = DefaultTriggerProbabilities) -> "Agenda":
         """Load an agenda from file.
 
         The policy class provided must be consistent with the policy parameters given in the file, i.e., it is the
@@ -1666,26 +1484,44 @@ class Agenda:
         """
         with open(filename, "r") as file:
             d = yaml.load(file, Loader=yaml.FullLoader)
-        agenda = cls._from_dict(
-            d, policy_cls, state_probabilities_cls, trigger_probabilities_cls
-        )
+        agenda = cls._from_dict(d, policy_cls, state_probabilities_cls, trigger_probabilities_cls)
 
         # Load trigger detectors
         # Transition triggers
-        trigger_names = list(agenda._transition_triggers.keys())  # pylint: disable=W0212
-        detectors = trigger_detector_loader.load(
-            agenda.name, trigger_names, snips_multi_engine=snips_multi_engine
-        )
+        trigger_names = list(agenda._transition_triggers.keys())
+        detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
 
         for detector in detectors:
+            #print('Transition TGD: {}'.format(detector))
             agenda.add_transition_trigger_detector(detector)
 
         # Kickoff triggers
-        trigger_names = list(agenda._kickoff_triggers.keys())  # pylint: disable=W0212
-        detectors = trigger_detector_loader.load(
-            agenda.name, trigger_names, snips_multi_engine=snips_multi_engine
-        )
+        trigger_names = list(agenda._kickoff_triggers.keys())
+        detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
 
         for detector in detectors:
+            #print('Kickoff TGD: {}'.format(detector))
             agenda.add_kickoff_trigger_detector(detector)
         return agenda
+
+    def __str__(self):
+        states = str([st for st in self._states.keys()])
+        kickoff_triggers = str([kt for kt in self._kickoff_triggers.keys()])
+        transition_triggers = str([tt for tt in self._transition_triggers.keys()])
+        actions = str([act for act in self._actions.keys()])
+        policy = str(self._policy)
+
+        return  '=== AGENDA ===\n'\
+                '{}\n' \
+                '=== STATES ===\n' \
+                '{}\n' \
+                '=== KICKOFF TRIGGERS ===\n'\
+                '{}\n' \
+                '=== TRANSITIONS TRIGGERS ===\n'\
+                '{}\n' \
+                '=== ACTIONS ===\n'\
+                '{}\n' \
+                '=== POLICY ===\n'\
+                '{}\n' \
+                .format(self._name, states, kickoff_triggers, transition_triggers, actions, policy)
+
