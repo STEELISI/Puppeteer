@@ -1,20 +1,34 @@
 from typing import List, Tuple, Dict
 from .observation import MessageObservation
 import re
+from transformers import AutoModelForSequenceClassification, AutoModelForCausalLM, AutoTokenizer # type: ignore
 import spacy
-from .model import NLI_MODEL, NLI_TOKENIZER
 
-model = NLI_MODEL
-tokenizer = NLI_TOKENIZER
+model = AutoModelForSequenceClassification.from_pretrained("facebook/bart-large-mnli") # type: ignore
+tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-mnli") # type: ignore
+nlp = spacy.load("en_core_web_sm")
 
-class SpacyNLIEngine:
-    """ Wrapper around a Spacy model. """
+class NLIEngine:
+    
+    def __init__(self, paths: Dict[str, str]):
+        premises = {}
+        for trigger_name, path in paths.items():
+            with open(path) as f:
+                premise = f.readlines()
+                premise = [p.strip() for p in premise if p.strip()]
+                # check if this is not an empty file
+                if premise:
+                    premises[trigger_name] = premise
 
-    def __init__(self, model_name="en_core_web_sm"):
-        self._model_name = model_name
-        self._nlp = spacy.load(model_name)
+        self._trigger_names: List[str] = list(premises.keys())
+        self._premises: Dict[str, List[str]] = premises
+         
+    @property
+    def trigger_names(self) -> List[str]:
+        """Returns the trigger names that this engine detects."""
+        return self._trigger_names
 
-    def get_sentences(self, msg: str):
+    def get_sentences(self, msg: str) -> List[str]: 
         """ Split a massage by punctuations ('.', '!', '?')
         if the split sentence is compound (FANBOYS: For, And, Nor, But, Or, Yet, So)
         then segment it into multiple simple sentences
@@ -31,7 +45,7 @@ class SpacyNLIEngine:
             sentences.update(split_msg)
 
         for m in split_msg:
-            text = self._nlp(m)
+            text = nlp(m)
             conj_idx = []
             for token in text:
                 if token.text in ["for", "and", "nor", "but", "or", "yet", "so"]: #CONJUNCTIONS: FANBOYS
@@ -73,28 +87,6 @@ class SpacyNLIEngine:
 
         return list(sentences)
 
-class NLIEngine:
-    
-    def __init__(self, paths: Dict[str, str], helper: SpacyNLIEngine = SpacyNLIEngine()):
-        self._helper = helper
-        
-        premises = {}
-        for trigger_name, path in paths.items():
-            with open(path) as f:
-                premise = f.readlines()
-                premise = [p.strip() for p in premise if p.strip()]
-                # check if this is not an empty file
-                if premise:
-                    premises[trigger_name] = premise
-
-        self._trigger_names: List[str] = list(premises.keys())
-        self._premises: Dict[str, List[str]] = premises
-         
-    @property
-    def trigger_names(self) -> List[str]:
-        """Returns the trigger names that this engine detects."""
-        return self._trigger_names
-
     def detect(self, msg: str) -> List[Tuple[str, float, str]]:
         """Detect trigger from the given message.
         Args:
@@ -109,7 +101,7 @@ class NLIEngine:
         """
 
         sentences = [msg]
-        sub_sentences = self._helper.get_sentences(msg)
+        sub_sentences = self.get_sentences(msg)
         # sentences: a list of text: original message plus its split(s) and simple sentence(s)
         sentences += sub_sentences
 

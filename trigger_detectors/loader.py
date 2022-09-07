@@ -7,9 +7,9 @@ from .payment import *
 
 class MyTriggerDetectorLoader(TriggerDetectorLoader):
     
-    def __init__(self, default_nli_path=None, default_snips_path=None, agenda_names=None):
+    def __init__(self, default_nli_path=None, agenda_names=None):
         super(MyTriggerDetectorLoader, self).__init__(\
-                default_nli_path=default_nli_path, default_snips_path=default_snips_path)
+                default_nli_path=default_nli_path)
        
         agenda_names = set(agenda_names)
         # Our custom trigger detectors.

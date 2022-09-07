@@ -1,12 +1,10 @@
 import abc
 from typing import List, Dict, Tuple, Type
-
-import numpy as np
 import matplotlib.pyplot as plt
 
 from .agenda import Action, Agenda, AgendaState
 from .logging import Logger
-from .observation import Observation
+from .observation import Observation, MessageObservation
 from .extractions import Extractions
 from .knowledge.knowledge_center import KNOWLEDGE
 
@@ -197,7 +195,8 @@ class Puppeteer:
 
     def __init__(self, agendas: List[Agenda],
                  policy_cls: Type[DefaultPuppeteerPolicy] = DefaultPuppeteerPolicy,
-                 plot_state: bool = False) -> None:
+                 plot_state: bool = False,
+                 enable_neural_dialog: bool = False) -> None:
         """Initialize a new Puppeteer.
 
         Args:
@@ -206,9 +205,9 @@ class Puppeteer:
             plot_state: If true, the updated state of the current agenda is plotted after each turn.
         """
         self._agendas = agendas
-        self._last_actions: List[Action] = []
         self._policy = policy_cls(agendas)
         self._plot_state = plot_state
+        self._enable_neural_dialog = enable_neural_dialog
 
         if self._plot_state:
             plt.ion()
@@ -221,6 +220,9 @@ class Puppeteer:
             self._agenda_states = {a.name: AgendaState(a, None, None) for a in agendas}
 
         self._log = Logger()
+        if self._enable_neural_dialog:
+            from .neural_dialog_engine import NeuralDialogEngine
+            self._neural_dialog_engine = NeuralDialogEngine()
 
     @property
     def log(self):
@@ -253,6 +255,9 @@ class Puppeteer:
         self._log.begin("Observations")
         for o in observations:
             self._log.add(str(o))
+        user_text = ' '.join([o.text.strip() for o in observations if isinstance(o, MessageObservation)])
+        if self._enable_neural_dialog:
+            self._neural_dialog_engine.append_chat_history(user_text)
         self._log.end()
         self._log.begin("Extractions")
         for name in old_extractions.names:
@@ -263,7 +268,7 @@ class Puppeteer:
         active_agendas = self._policy._active_agendas
         self._log.begin("Update phase")
         for agenda_state in self._agenda_states.values():
-            extractions = agenda_state.update(self._last_actions, observations, old_extractions, active_agendas)
+            extractions = agenda_state.update(observations, old_extractions, active_agendas)
             new_extractions.update(extractions)
 
         self._log.begin("Updating active agendas")
@@ -284,12 +289,29 @@ class Puppeteer:
 
         self._log.end()
         self._log.begin("Act phase")
-        self._last_actions, action_extractions = self._policy.act(self._agenda_states, new_extractions)
+        actions, action_extractions = self._policy.act(self._agenda_states, new_extractions)
         new_extractions.update(action_extractions)
         self._log.end()
         self._log.begin("Outputs")
         self._log.begin("Actions")
-        for a in self._last_actions:
+
+        ### if neural dialog engine is enabled
+        if self._enable_neural_dialog:
+            bot_text = ' '.join([a.text.strip() for a in actions])
+            ### debug ###
+            #print("chat_hist: {}".format(self._neural_dialog_engine._chat_history))
+            #print("chat_hist_ids: {}".format(self._neural_dialog_engine._chat_history_ids))
+            #print("chat_hist_lens: {}".format(self._neural_dialog_engine._chat_history_lens))
+            ### end ###
+            if bot_text.strip():
+                # we got some action texts from agendas => appending them to neural bot's chat history
+                self._neural_dialog_engine.append_chat_history(bot_text)
+            else:
+                # we got nothing => turn to neural bot, generate a response
+                neural_text = self._neural_dialog_engine.generate_response()
+                actions = [Action(name="neural_response", text=neural_text)]
+
+        for a in actions:
             self._log.add(str(a))
         self._log.end()
         self._log.begin("Extractions")
@@ -298,7 +320,18 @@ class Puppeteer:
         self._log.end()
         self._log.end()
 
-        return self._last_actions, new_extractions
+        return actions, new_extractions
+
+    def reset(self, enable_neural_dialog=False):
+        """ Restart Puppeteer: reset all agenda states to their initial values.
+        """
+        for agenda in self._agenda_states:
+            # don't forget to reset the policy
+            self._policy = DefaultPuppeteerPolicy(self._agendas)
+            self._agenda_states[agenda].reset()
+
+        if enable_neural_dialog:
+            self._neural_dialog_engine.reset()
 
     def get_active_agenda_names(self) -> List[str]:
         """ Returns the active agenda names (the ones already kicked off).

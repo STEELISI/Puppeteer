@@ -290,7 +290,6 @@ class AgendaState:
         return self._state_probabilities
 
     def update(self,
-               actions: List[Action],
                observations: List[Observation],
                old_extractions: Extractions,
                active_agendas: Dict[str, "Agenda"],
@@ -320,7 +319,7 @@ class AgendaState:
             self._log.end()
 
         self._log.begin("State probabilities")
-        self._state_probabilities.update(self._transition_trigger_probabilities, actions)
+        self._state_probabilities.update(self._transition_trigger_probabilities)
         self._log.end()
 
         self._log.end()
@@ -559,7 +558,7 @@ class StateProbabilities(abc.ABC):
                 self._probabilities[state_name] = 0.0
 
     @abc.abstractmethod
-    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
+    def update(self, trigger_probabilities: TriggerProbabilities) -> None:
         """Updates state probabilities based on trigger probabilities.
 
         Trigger probabilities represent all information in observations that is relevant for state transition. This
@@ -569,7 +568,6 @@ class StateProbabilities(abc.ABC):
 
         Args:
             trigger_probabilities: The trigger probabilities.
-            actions: Actions performed in the last turn.
         """
         raise NotImplementedError()
 
@@ -588,7 +586,7 @@ class DefaultStateProbabilities(StateProbabilities):
         super(DefaultStateProbabilities, self).__init__(agenda)
         self._log = Logger()
 
-    def update(self, trigger_probabilities: TriggerProbabilities, actions: List[Action]) -> None:
+    def update(self, trigger_probabilities: TriggerProbabilities) -> None:
         """Updates state probabilities based on trigger probabilities.
 
         Trigger probabilities represent all information in observations that is relevant for state transition. This
@@ -598,7 +596,6 @@ class DefaultStateProbabilities(StateProbabilities):
 
         Args:
             trigger_probabilities: The trigger probabilities.
-            actions: Actions performed in the last turn.
         """
 
         """ We don't need this for multiple agendas
@@ -1458,7 +1455,6 @@ class Agenda:
 
     @classmethod
     def load(cls, filename: str, trigger_detector_loader: TriggerDetectorLoader,
-             snips_multi_engine: bool = False,
              policy_cls: Type[AgendaPolicy] = DefaultAgendaPolicy,
              state_probabilities_cls: Type[StateProbabilities] = DefaultStateProbabilities,
              trigger_probabilities_cls: Type[TriggerProbabilities] = DefaultTriggerProbabilities) -> "Agenda":
@@ -1486,22 +1482,24 @@ class Agenda:
             d = yaml.load(file, Loader=yaml.FullLoader)
         agenda = cls._from_dict(d, policy_cls, state_probabilities_cls, trigger_probabilities_cls)
 
-        # Load trigger detectors
+        ### Load trigger detectors
+
+        # Kickoff triggers
+        trigger_names = list(agenda._kickoff_triggers.keys())
+        print("Loading kickoff trigger detector(s)...")
+        detectors = trigger_detector_loader.load(agenda.name, trigger_names)
+        for detector in detectors:
+            #print('Kickoff TGD: {}'.format(detector))
+            agenda.add_kickoff_trigger_detector(detector)
+
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
-        detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
-
+        print("Loading transition trigger detector(s)...")
+        detectors = trigger_detector_loader.load(agenda.name, trigger_names)
         for detector in detectors:
             #print('Transition TGD: {}'.format(detector))
             agenda.add_transition_trigger_detector(detector)
 
-        # Kickoff triggers
-        trigger_names = list(agenda._kickoff_triggers.keys())
-        detectors = trigger_detector_loader.load(agenda.name, trigger_names, snips_multi_engine=snips_multi_engine)
-
-        for detector in detectors:
-            #print('Kickoff TGD: {}'.format(detector))
-            agenda.add_kickoff_trigger_detector(detector)
         return agenda
 
     def __str__(self):
