@@ -109,7 +109,11 @@ class NLITriggerDetector:
         messages = []
         for observation in observations:
             if isinstance(observation, MessageObservation):
-                messages.append(observation.text.strip())
+                m = observation.text.strip()
+                if m:
+                    if m[-1] not in ['.', '?', '!']:
+                        m += '.' # append a period
+                    messages.append(m)
         message = " ".join(messages).lower() # make sure all text is lowercase
 
         trigger_map: Dict[str, float] = {}
