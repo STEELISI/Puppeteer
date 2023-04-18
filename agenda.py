@@ -3,10 +3,11 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import networkx as nx
 import yaml
+import random
 
 from .extractions import Extractions
 from .logging import Logger
-from .observation import Observation
+from .observation import Observation, IntentObservation
 from .trigger_detector import TriggerDetector, TriggerDetectorLoader
 
 
@@ -247,7 +248,7 @@ class AgendaState:
     The update() method is the main method for updating the agenda level state, based on extractions and observations
     made since the last time step.
     """
-    def __init__(self, agenda: "Agenda", 
+    def __init__(self, topic: str, agenda_dict: Dict[str, "Agenda"], 
                 fig = None,
                 ax = None) -> None:
         """Initializes a new AgendaState.
@@ -255,44 +256,25 @@ class AgendaState:
         Args:
             agenda: The agenda that this object holds probabilities for.
         """
-        self._agenda = agenda
-        self._transition_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=False)
-        self._kickoff_trigger_probabilities = agenda.trigger_probabilities_cls(agenda, kickoff=True)
-        self._state_probabilities = agenda.state_probabilities_cls(agenda)
+
+        self._topic = topic
+        self._agenda = {}
+        self._transition_trigger_probabilities = {}
+        self._kickoff_trigger_probabilities = {} 
+        self._state_probabilities = {} 
+        for key, agenda_ in agenda_dict.items():
+            self._agenda[key] = agenda_
+            self._transition_trigger_probabilities[key] = agenda_.trigger_probabilities_cls(agenda_, kickoff=False)
+            self._kickoff_trigger_probabilities[key] = agenda_.trigger_probabilities_cls(agenda_, kickoff=True)
+            self._state_probabilities[key] = agenda_.state_probabilities_cls(agenda_)
+ 
         self._pos = None
         self._log = Logger()
-        if fig != None and ax != None:
-            self._fig = fig
-            self._ax = ax
-            self._g = nx.MultiDiGraph()
-            # Add states
-            for s in self._agenda.state_names:
-                self._g.add_node(s)
-            self._g.add_node('ERROR_STATE')
-            # Add transitions
-            for s0 in self._agenda.state_names:
-                for s1 in self._agenda.transition_connected_state_names(s0):
-                    self._g.add_edge(s0, s1)
-
-    @property
-    def transition_trigger_probabilities(self) -> "TriggerProbabilities":
-        """Returns the transition trigger probabilities part of the agenda state."""
-        return self._transition_trigger_probabilities
-
-    @property
-    def kickoff_trigger_probabilities(self) -> "TriggerProbabilities":
-        """Returns the kickoff trigger probabilities part of the agenda state."""
-        return self._kickoff_trigger_probabilities
-
-    @property
-    def state_probabilities(self) -> "StateProbabilities":
-        """Returns the state probabilities part of the agenda state."""
-        return self._state_probabilities
 
     def update(self,
                observations: List[Observation],
-               old_extractions: Extractions,
-               active_agendas: Dict[str, "Agenda"],
+               new_extractions: Extractions,
+               active_agendas: Dict[str, Dict[str, "Agenda"]],
                ) -> Extractions:
         """Updates the agenda-level state.
 
@@ -306,55 +288,74 @@ class AgendaState:
         Returns:
             New extractions made based on the input observations.
         """
-        self._log.begin(f"Updating agenda {self._agenda.name}")
 
-        if self._agenda.name not in active_agendas: #check for kickoff trigger if this agenda is not in the active list
-            self._log.begin("Kickoff trigger probabilities")
-            new_extractions = self._kickoff_trigger_probabilities.update(observations, old_extractions)
+        ### reaction agenda(s) ###
+        self._log.begin(f"Updating agenda {self._topic}")
+        if self._topic == "react":
+            for t in self._agenda.keys():
+                self._log.begin(f"Updating sub-agenda {t}")
+                _ = self._kickoff_trigger_probabilities[t].update(observations, new_extractions)
+                self._log.end()
+            self._log.end()
             self._log.end()
 
-        else: #if this agenda has been active, check for transition triggers
+            return Extractions()
+
+        if self._topic in active_agendas:
             self._log.begin("Transition trigger probabilities")
-            new_extractions = self._transition_trigger_probabilities.update(observations, old_extractions)
+            _ = self._transition_trigger_probabilities["main"].update(observations, new_extractions)
+            if self._transition_trigger_probabilities["main"].probabilities["push_back"] >= 0.6 \
+                    and "push_back" in self._agenda: # push_back
+
+                ### deal with kickoff agenda (repeatedly) ###
+
+                ### kick off the push back (sub) agenda ###
+                """
+                intent_observation = IntentObservation()
+                intent_observation.add_intent("push_back")
+                _ = self._kickoff_trigger_probabilities["push_back"].update([intent_observation], old_extractions)
+                self._state_probabilities["push_back"].update(self._transition_trigger_probabilities["push_back"])
+                """
+
+                ### match specific push back with nli triggers ###
+                _ = self._transition_trigger_probabilities["push_back"].update(observations, new_extractions)
+                print("push_back triggers", self._transition_trigger_probabilities["push_back"].probabilities)
+                #self._state_probabilities["push_back"].update(self._transition_trigger_probabilities["push_back"])
+
+        else:
+            self._log.begin("Kickoff trigger probabilities")
+            _ = self._kickoff_trigger_probabilities["main"].update(observations, new_extractions)
+             
+        self._log.end()
+        
+        """
+        ### hacky condition: skip state update if you already are in push_back and get push_back trigger ###
+        ### we may have to add this edge in the agenda ###
+        current_state_name, likelihood = self.current()
+        print("yoyo", self._topic, current_state_name, likelihood)
+        print(self._agenda["main"].transition_trigger_names(current_state_name))
+        if "push_back" in self._agenda["main"].transition_trigger_names(current_state_name) \
+                and self._transition_trigger_probabilities["main"].probabilities["push_back"] >= 0.5 \
+                and current_state_name == "push_back":
             self._log.end()
+            return new_extractions
+        """
 
         self._log.begin("State probabilities")
-        self._state_probabilities.update(self._transition_trigger_probabilities)
+        self._state_probabilities["main"].update(self._transition_trigger_probabilities["main"])
         self._log.end()
 
         self._log.end()
 
-        return new_extractions
+        return Extractions()
 
-    def reset(self) -> None:
+    def current(self) -> Tuple[str, float]:
+        current_state_name, likelihood = max(self._state_probabilities["main"].probabilities.items(), key=lambda x: x[1])
+        return current_state_name, likelihood
+
+    def reset(self, key) -> None:
         """Reset probabilities to the initial values for a newly started agenda."""
-        self._state_probabilities.reset()
-
-    def plot(self) -> None:
-        """ Plot the state graph."""
-        self._ax.clear()
-        
-        # Color nodes according to probability map.
-        color_transition = ['#fff0e6', '#ffe0cc', '#ffd1b3', '#ffc299', '#ffb380', '#ffa366', '#ff944d', '#ff8533',
-                            '#ff751a', '#ff6600']
-
-        labels = {}
-        color_map = []
-        for node in self._g:
-            prob = self._state_probabilities.probability(node)
-            labels[node] = '{}\np={:.2f}'.format(node, prob)
-
-            lvl = int(round(prob * 10)) # level or index in color_transition
-            if lvl > 0:
-                lvl = lvl - 1
-
-            if lvl < len(color_transition):
-                color_map.append(color_transition[lvl])
-            else:
-                color_map.append('grey')
-        self._ax.set_title(self._agenda.name)
-        nx.draw(G=self._g, pos=nx.circular_layout(self._g), ax=self._ax, node_color=color_map, labels=labels, node_size=2000)
-
+        self._state_probabilities[key].reset()
 
 class TriggerProbabilities(abc.ABC):
     """Handles trigger probabilities for an ongoing conversation.
@@ -470,11 +471,10 @@ class DefaultTriggerProbabilities(TriggerProbabilities):
 
             for (trigger_name, p) in trigger_map_out.items():
                 self._log.add(f"{trigger_name}: {p:.3f}")
-                if trigger_name in self._probabilities:
-                    if trigger_name not in trigger_map:
-                        trigger_map[trigger_name] = p
-                    elif trigger_map[trigger_name] < p:
-                        trigger_map[trigger_name] = p
+                if trigger_name not in trigger_map:
+                    trigger_map[trigger_name] = p
+                elif trigger_map[trigger_name] < p:
+                    trigger_map[trigger_name] = p
             self._log.end()
             self._log.end()
 
@@ -724,8 +724,8 @@ class AgendaPolicy(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod    
-    def pick_actions(self, state: AgendaState, action_history: List[Action],
-                     turns_without_progress: int) -> List[Action]:
+    def pick_actions(self, state: AgendaState, action_history: List[str],
+                     omit_keywords: List[str]) -> List[str]:
         """Picks zero or more appropriate actions to take, given the current state of the agenda.
 
         Args:
@@ -881,9 +881,7 @@ class DefaultAgendaPolicy(AgendaPolicy):
         Returns:
             True if the agenda made progress in the last turn.
         """
-        non_event_probability = state.transition_trigger_probabilities.non_trigger_prob
-        error_state_probability = state.state_probabilities.probabilities["ERROR_STATE"]
-        return non_event_probability <= 0.4 and error_state_probability <= .8
+        return True if not state._transition_trigger_probabilities["main"].probabilities["push_back"] else False
 
     def is_done(self, state: AgendaState) -> bool:
         """Returns true if the agenda is likely in a terminus state.
@@ -896,38 +894,38 @@ class DefaultAgendaPolicy(AgendaPolicy):
         """
         best = None
             
-        # For state by decresing probabilities that we're in that state. 
+        # For state by decresing probabilities that we're in that state.
         # TODO Probably simpler: just look at best and second-best state
         # TODO Don't access probability map directly
-        probability_map = state.state_probabilities.probabilities
-        sorted_states = {k: v for k, v in sorted(probability_map.items(), key=lambda item: item[1], reverse=True)}
-        for (rank, st) in enumerate(sorted_states):
-            if st in self._agenda.terminus_names:
-                # If this is an accept state, we can set our best exit candidate.
-                if rank == 0 and probability_map[st] >= self._absolute_accept_thresh:
-                    return True
-                elif rank == 0 and probability_map[st] >= self._min_accept_thresh_w_differential:
-                    best = probability_map[st]
-            # If we have an exit candidate, 
-            if best is not None and rank == 1:
-                if best - probability_map[st] >= self._accept_thresh_differential:
-                    return True
+
+        probability_map = state._state_probabilities["main"].probabilities
+        for terminal in state._agenda["main"].terminus_names:
+            if terminal == state._agenda["main"].start_state.name: # first and terminal states are the same
+                return True
+
+            if probability_map[terminal] >= self._absolute_accept_thresh:
+                return True
+
         return False
 
     def can_kick_off(self, state: AgendaState) -> bool:
         """Returns true if the agenda is likely in a state where it can kick off.
-
         Args:
             state: The current state of the agenda.
-
         Returns:
             True if the agenda is likely in a state where it can kick off.
         """
-        non_kickoff_probability = state.kickoff_trigger_probabilities.non_trigger_prob
+        non_kickoff_probability = state._kickoff_trigger_probabilities["main"].non_trigger_prob
         return 1.0 - non_kickoff_probability >= self._kickoff_thresh
 
-    def pick_actions(self, state: AgendaState, action_history: List[Action],
-                     turns_without_progress: int) -> List[Action]:
+    def contain_keywords(self, text: str, candidates: List[str]) -> bool:
+        for word in candidates:
+            if word in text:
+                return True
+        return False
+
+    def pick_actions(self, state: AgendaState, action_history: List[str],
+                     omit_keywords: List[str]) -> List[str]:
         """Picks zero or more appropriate actions to take, given the current state of the agenda.
 
         Args:
@@ -938,68 +936,47 @@ class DefaultAgendaPolicy(AgendaPolicy):
         Returns:
             A list of actions to take.
         """
-        actions_taken: List[Action] = []
-        
-        # Action map - maps states to a list of tuples of:
-        # (action_name, function, arguments, 
-        #  boolean to indicate if this an exclusive action that cannot be used
-        #  with other actions, number of allowed repeats for this action)
-        if turns_without_progress == 0:
-            self._log.add("Using normal action map.")
-            action_map = self._agenda.action_map
-        else:
-            self._log.add("Using stall action map.")
-            action_map = self._agenda.stall_action_map
-            
-        # Work over the most likely state, to least likely, taking the first
-        # actions we are allowed to given repeat allowance & exclusivity.
-        # for state by decreasing probabilities that we're in that state:
-        for st in {k: v for k, v in sorted(state.state_probabilities.probabilities.items(), key=lambda item: item[1],
-                                           reverse=True)}:
-            # XXX Maybe need to check likelihood.
-            if st in action_map:
-                self._log.add(f"State {st} is the most likely state that has actions defined.")
-                for action_name in action_map[st]:
-                    action = self._agenda.action(action_name)
-                    exclusive_flag = action.exclusive_flag
-                    allowed_repeats = action.allowed_repeats
-                    
-                    num_times_action_was_used = action_history.count(action)
-                    
-                    if num_times_action_was_used < allowed_repeats:
-                        if exclusive_flag and actions_taken:
-                            # Can't do an exclusive action if a non-exclusive
-                            # action is already taken.
-                            continue
 
-                        actions_taken.append(action)
-                        if exclusive_flag:
-                            # No more actions to add
+        actions_taken: List[str] = []
+
+        current_state_name, likelihood = max(state._state_probabilities["main"].probabilities.items(), key=lambda x: x[1])
+        print("curr", current_state_name, "prob", likelihood)
+        if current_state_name == "get_push_back":
+            action_map = state._agenda["push_back"].action_map
+            # get max trigger prob (detected_trigger)
+            trigger_name, max_prob = max(state._transition_trigger_probabilities["push_back"].probabilities.items(), key=lambda x: x[1])
+            print("push back trigger prob", state._transition_trigger_probabilities["push_back"].probabilities)
+            print("trigger_name", trigger_name, "max_prob", max_prob)
+            if max_prob >= 0.6:
+                destination_state_name = state._agenda["push_back"].transition_end_state_name(current_state_name, trigger_name)
+                print("destination_state_name", destination_state_name)
+                if destination_state_name in action_map:
+                    action_names = action_map[destination_state_name]
+                    chosen_actions = set()
+                    while len(chosen_actions) != len(action_names):
+                        chosen_action_name = random.choice(action_names)
+                        action = self._agenda.action(chosen_action_name).text
+                        if action not in action_history and not self.contain_keywords(action, omit_keywords):
+                            # have not done this action before and did not contain omit keywords
+                            actions_taken.append(action)
                             break
-                if actions_taken:
-                    self._log.add(f"Doing actions: {[a.name for a in actions_taken]}")
-                    return actions_taken
-                elif action_map == self._agenda.action_map:
-                    self._log.add("No normal actions left to take.")
-                    # All normal actions were used the maximum number of times.
-                    # See if there are stall actions left.
-                    if st in self._agenda.stall_action_map:
-                        for action_name in self._agenda.stall_action_map[st]:
-                            action = self._agenda.action(action_name)
-                            allowed_repeats = action.allowed_repeats
-                            
-                            num_times_action_was_used = action_history.count(action)
-                            
-                            if num_times_action_was_used < allowed_repeats:
-                                self._log.add(f"Using stall action {action.name} instead.")
-                                return [action]
-                    self._log.add("No stall actions to take either.")
-                else:
-                    self._log.add("No stall actions left to take.")
-                # Couldn't find any action for most likely state.
-                break
-        return []
+                        chosen_actions.add(action)
 
+        else:
+            action_map = self._agenda.action_map
+            if current_state_name in action_map:
+                action_names = action_map[current_state_name]
+                chosen_actions = set()
+                while len(chosen_actions) != len(action_names):
+                    chosen_action_name = random.choice(action_names)
+                    action = self._agenda.action(chosen_action_name).text
+                    if action not in action_history and not self.contain_keywords(action, omit_keywords):
+                        # have not done this action before and did not contain omit keywords
+                        actions_taken.append(action)
+                        break
+                    chosen_actions.add(action)
+            
+        return actions_taken
 
 class Agenda:
     """Class defining agenda behavior.
@@ -1486,7 +1463,7 @@ class Agenda:
 
         # Kickoff triggers
         trigger_names = list(agenda._kickoff_triggers.keys())
-        print("Loading kickoff trigger detector(s)...")
+        print("Checking kickoff trigger detector(s)...")
         detectors = trigger_detector_loader.load(agenda.name, trigger_names)
         for detector in detectors:
             #print('Kickoff TGD: {}'.format(detector))
@@ -1494,7 +1471,7 @@ class Agenda:
 
         # Transition triggers
         trigger_names = list(agenda._transition_triggers.keys())
-        print("Loading transition trigger detector(s)...")
+        print("Checking transition trigger detector(s)...")
         detectors = trigger_detector_loader.load(agenda.name, trigger_names)
         for detector in detectors:
             #print('Transition TGD: {}'.format(detector))

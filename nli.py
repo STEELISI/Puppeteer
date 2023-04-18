@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict
 from .observation import MessageObservation
+import os
 import re
 from transformers import AutoModelForSequenceClassification, AutoModelForCausalLM, AutoTokenizer # type: ignore
 import spacy
@@ -7,6 +8,8 @@ import spacy
 model = AutoModelForSequenceClassification.from_pretrained("facebook/bart-large-mnli") # type: ignore
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-mnli") # type: ignore
 nlp = spacy.load("en_core_web_sm")
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 class NLIEngine:
     

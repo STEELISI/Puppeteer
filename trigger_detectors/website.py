@@ -8,34 +8,11 @@ from urlextract import URLExtract
 extractor = URLExtract()
 
 def extract_url(msg: str) -> Extractions:
+    extractions = Extractions()
     extract_urls = extractor.find_urls(msg)
     if extract_urls:
-        print('extracted urls: {}'.format(str(extract_urls)))
-        valid_url = []
-        invalid_url = []
-        for i, url in enumerate(extract_urls):
-            if "http" not in url:
-                url = "http://" + url
-            try:
-                request_response = requests.head(url)
-                if request_response.status_code == 404:
-                    print("{}) {} is valid but not reachable.".format(i, url))
-                    invalid_url.append(url)
-                else:
-                    print("{}) {} is valid and reachable.".format(i, url))
-                    valid_url.append(url)
-            except:
-                print("{}) is invalid.".format(i, url))
-                invalid_url.append(url)
-
-        extractions = Extractions()
-        if valid_url:
-            extractions.add_extraction("valid_url", valid_url)
-        if invalid_url:
-            extractions.add_extraction("invalid_url", invalid_url)
-        return extractions
-    else:
-        return Extractions()
+        extractions.add_extraction("url", extract_urls)
+    return extractions
 
 class URLWebsiteTriggerDetector(TriggerDetector):
 
@@ -50,10 +27,8 @@ class URLWebsiteTriggerDetector(TriggerDetector):
         # Assume we have only one observation
         if isinstance(observations[0], MessageObservation):
             extractions = extract_url(observations[0].text) #extracted url
-            if extractions.has_extraction("valid_url"):
-                return ({"valid_url": 1.0}, extractions)
-            elif extractions.has_extraction("invalid_url"):
-                return ({"invalid_url": 1.0}, extractions)
+            if extractions.has_extraction("url"):
+                return ({"url": 1.0}, extractions)
             else:
                 return ({}, extractions)
         else:

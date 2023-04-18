@@ -1,12 +1,14 @@
 import abc
-from typing import List, Dict, Tuple, Type
+from typing import List, Dict, Tuple, Type, Set
 import matplotlib.pyplot as plt
+import random
 
 from .agenda import Action, Agenda, AgendaState
 from .logging import Logger
-from .observation import Observation, MessageObservation
+from .observation import IntentObservation, Observation, MessageObservation
 from .extractions import Extractions
-from .knowledge.knowledge_center import KNOWLEDGE
+
+from .trigger_detectors.helper import extractor, keywords as victim_keywords
 
 class PuppeteerPolicy(abc.ABC):
     """Handles inter-agenda decisions about behavior.
@@ -23,7 +25,7 @@ class PuppeteerPolicy(abc.ABC):
     is tied to a specific conversation, and may hold conversation-specific state.
     """
 
-    def __init__(self, agendas: List[Agenda]) -> None:
+    def __init__(self, agendas: Dict[str, Dict[str, Agenda]]) -> None:
         """Initialize a new policy
 
         Args:
@@ -32,7 +34,7 @@ class PuppeteerPolicy(abc.ABC):
         self._agendas = agendas
 
     @abc.abstractmethod
-    def act(self, agenda_states: Dict[str, AgendaState], extractions: Extractions) -> List[Action]:
+    def act(self, agenda_states: Dict[str, AgendaState], omit_keywords: List[str]) -> List[str]:
         """"Picks zero or more appropriate actions to take, given the current state of the conversation.
 
         Args:
@@ -51,7 +53,7 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
     This is the default PuppeteerPolicy implementation. See PuppeteerPolicy documentation for further details.
     """
 
-    def __init__(self, agendas: List[Agenda]) -> None:
+    def __init__(self, agendas: Dict[str, Dict[str, Agenda]]) -> None:
         """Initialize a new policy
 
         Args:
@@ -59,13 +61,14 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
         """
         super(DefaultPuppeteerPolicy, self).__init__(agendas)
         # Policy metadata
-        self._active_agendas: Dict[str, Agenda] = {} # agendas that are able to start
-        self._turns_without_progress = {a.name: -1 for a in agendas} #number of consecutive turns without progress
-        self._times_made_current = {a.name: 0 for a in agendas}
-        self._action_history: Dict[str, List[Action]] = {a.name: [] for a in agendas}
+        self._active_agendas: Dict[str, Dict[str, Agenda]] = {} # agendas that are able to start
+        self._finished_agenda_names: Set[str] = set() # complete agenda(s) -- we got the extraction
+        self._turns_without_progress = {t: -1 for t in agendas} #number of consecutive turns without progress
+        self._times_made_current = {t: 0 for t in agendas}
+        self._action_history: List[str] = []
         self._log = Logger()
 
-    def act(self, agenda_states: Dict[str, AgendaState], extractions: Extractions) -> Tuple[List[Action], Extractions]:
+    def act(self, agenda_states: Dict[str, AgendaState], omit_keywords: List[str]) -> List[str]:
         """"Picks zero or more appropriate actions to take, given the current state of the conversation.
 
         See documentation of this method in PuppeteerPolicy.
@@ -78,88 +81,80 @@ class DefaultPuppeteerPolicy(PuppeteerPolicy):
         Returns:
             A list of Action objects representing actions to take, in given order.
         """
+        
+        print("active", self._active_agendas.keys())
+        print("finished", self._finished_agenda_names)
 
-        if len(self._active_agendas) == 0:
-            # if no active agendas ==> then do nothing
-            self._log.add("No active agenda, will do nothing.")
-            return ([], Extractions())
+        ### check if there is an agenda that can be kicked off ###
+        for topic in self._agendas:
+            if topic == "react":
+                continue
+            if topic in self._finished_agenda_names:
+                continue
+            # Update the list of active agendas (if any agendas are kicked off)
+            agenda_state = agenda_states[topic]
+            if topic not in self._active_agendas and self._agendas[topic]["main"].policy.can_kick_off(agenda_state):
+                self._log.add("{} is added to the list of active agendas".format(topic))
+                print("added", topic)
+                self._active_agendas[topic] = self._agendas[topic]
 
-        finished_agenda_names: List[str] = []
-        actions: List[Action] = []
-
-        self._log.begin("Active agendas")
-        # Main loop: go through each active agenda to pick actions
-        for agenda_name, agenda in self._active_agendas.items():
-            self._log.begin("{}".format(agenda_name))
-            # Report active agendas and their metadata 
-            # such as turns_without_progress, times_made_current, action_history
-            agenda_state = agenda_states[agenda_name]
-
-            self._log.begin("Metadata")
-            self._log.add("Previous turns without progress: {}".format(self._turns_without_progress[agenda_name]))
-            self._log.add("Times used: {}".format(self._times_made_current[agenda_name]))
-            self._log.add("Action history: {}".format([a.name for a in self._action_history[agenda_name]]))
-            self._log.end()
-
-            # Check if this agenda makes progress in this turn.
-            # There are two types of progress: progress after kick-off (transition triggers) and kick-off.
-            # In other words, we consider kicking off an agenda to be a progress too.
-            # Note that agenda.policy.made_progress() only checks progress after a agenda has been kicked off (transition triggers).
-            # We use turns_without_progress[agenda] to determine whether or not an agenda has just been kicked off
-            # if turns_without_progress[agenda] == -1 and agenda is in active_agendas ==> we just kicked off this agenda
-            progress_flag = agenda.policy.made_progress(agenda_state) or self._turns_without_progress[agenda_name] == -1
-            if progress_flag:
-                self._log.add("We have made progress with {}.".format(agenda_name))
-                # if making progress, reset turns_without_progress to 0
-                self._turns_without_progress[agenda_name] = 0
+        ### get some actions from active agendas ###
+        actions: List[str] = []
+        for topic in self._active_agendas:
+            print("active", topic)
+            agenda_state = agenda_states[topic]
+            print("trigger", agenda_state._transition_trigger_probabilities["main"]._probabilities)
+            print("state prob", agenda_state._state_probabilities["main"]._probabilities)
+            self._log.add("Picking actions for {}.".format(topic))
+            if agenda_state._transition_trigger_probabilities["main"]._probabilities["push_back"]:
+                action = self._active_agendas[topic]["push_back"].policy.pick_actions(agenda_state, self._action_history, omit_keywords)
             else:
-                self._log.add("We have not made progress with {}.".format(agenda_name))
-                # if no progress, penalize by increasing turns_without_progress by 1.
-                self._turns_without_progress[agenda_name] += 1
-
-            # if this agenda does make progress, check if it reached its terminus state
-            # Note that even if the agenda is considered done at this point, having reached a
-            # terminal state as the result of the incoming observations, it still gets to do
-            # a final action.
-            done_flag = progress_flag and agenda.policy.is_done(agenda_state)
-
-            # Now let see, what pre-defined actions we have for both progress and non-progress agendas
-            # For progress agendas, we will look at their action maps for actions.
-            # Whereas, for non-progress agendas, we use their stall action maps.
-            turns_without_progress = self._turns_without_progress[agenda_name]
-            action_history = self._action_history[agenda_name]
-
-            self._log.begin("Picking actions for {}.".format(agenda_name))
-            action = agenda.policy.pick_actions(agenda_state, action_history, turns_without_progress)
+                action = self._active_agendas[topic]["main"].policy.pick_actions(agenda_state, self._action_history, omit_keywords)
             # for act in action:
             #     print(agenda_name, act.text)
-            self._action_history[agenda_name].extend(action)
             actions += action
-            self._log.end()
 
+            done_flag = self._active_agendas[topic]["main"].policy.is_done(agenda_state)
             if done_flag:
                 # We reach the terminus state of this agenda.
                 # Will continue on other active agendas.
-                self._log.add("{} is in a terminal state, so it will be stopped.".format(agenda_name))
-                agenda_state.reset()
-                finished_agenda_names.append(agenda_name)
+                self._log.add("{} is in a terminal state, so it will be stopped.".format(topic))
+                self._finished_agenda_names.add(topic)
 
-            self._log.end()
+        ### delete finished agendas from active agendas ###
+        for topic in self._finished_agenda_names:
+            if topic in self._active_agendas.keys():
+                del self._active_agendas[topic]
+                print('delete', topic)
 
-        # Remove finished agendas from a list of active agendas.
-        for agenda_name in finished_agenda_names:
-            del self._active_agendas[agenda_name]
-            self._turns_without_progress[agenda_name] = -1
+        ### if there is no action from active agendas ==> check if there is any action we can perform from reactive agendas ###
+        if len(actions) == 0:
+            max_t, max_prob = "", 0
+            for t in agenda_states["react"]._agenda.keys():
+                likelihood = agenda_states["react"]._kickoff_trigger_probabilities[t]._probabilities["kickoff"]
+                if likelihood > max_prob:
+                    max_t = t
+                    max_prob = likelihood
 
-        # Check if any chosen action posts some knowledge
-        extractions = Extractions()
-        for action in actions:
-            if action.text in KNOWLEDGE:
-                knowledge = KNOWLEDGE[action.text]
-                for k, v in knowledge.items():
-                    extractions.add_extraction(k, v)
+            if max_prob >= 0.6:
+                # we replay one of the actions
+                sub_agenda = agenda_states["react"]._agenda[max_t]
+                action_map = sub_agenda.action_map
+                action_names = action_map["react"]
+                chosen_actions = set()
+                while len(chosen_actions) != len(action_names):
+                    chosen_action_name = random.choice(action_names)
+                    action = sub_agenda.action(chosen_action_name).text
+                    if action not in self._action_history and not sub_agenda.policy.contain_keywords(action, omit_keywords):
+                        # have not done this action before and did not contain omit keywords
+                        actions.append(action)
+                        break
+                    chosen_actions.add(action)
 
-        return (actions, extractions)
+        # Capitalize the first letter of each action
+        actions = [a.capitalize() for a in actions]
+
+        return actions
 
 class Puppeteer:
     """Agendas-based dialog bot.
@@ -193,7 +188,7 @@ class Puppeteer:
            of reply to the other party.
     """
 
-    def __init__(self, agendas: List[Agenda],
+    def __init__(self, agendas: Dict[str, Dict[str, Agenda]],
                  policy_cls: Type[DefaultPuppeteerPolicy] = DefaultPuppeteerPolicy,
                  plot_state: bool = False,
                  enable_neural_dialog: bool = False) -> None:
@@ -212,17 +207,21 @@ class Puppeteer:
         if self._plot_state:
             plt.ion()
             agenda_states = {}
-            for a in agendas:
+            for t in agendas:
                 fig, ax = plt.subplots()
-                agenda_states[a.name] = AgendaState(a, fig, ax)
+                agenda_states[t] = AgendaState(t, agendas[t], fig, ax)
             self._agenda_states = agenda_states
         else:
-            self._agenda_states = {a.name: AgendaState(a, None, None) for a in agendas}
+            self._agenda_states = {t: AgendaState(t, agendas[t], None, None) for t in agendas}
 
         self._log = Logger()
         if self._enable_neural_dialog:
-            from .neural_dialog_engine import NeuralDialogEngine
-            self._neural_dialog_engine = NeuralDialogEngine()
+            #from .neural_dialog_engine import NeuralDialogEngine
+            from .chatgpt_engine import ChatGPTEngine
+            self._neural_dialog_engine = ChatGPTEngine()
+
+        self._kickoff = False
+        self._scams = self.get_scams()
 
     @property
     def log(self):
@@ -233,7 +232,23 @@ class Puppeteer:
         """
         return self._log.log
 
-    def react(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[List[Action], Extractions]:
+    def get_scams(self, scam_file="/nas/home/pcharnset/irc-user-study/puppeteer/scams.txt") -> List[str]:
+        with open(scam_file) as f:
+            scams = f.readlines()
+            scams = [s.strip() for s in scams if s.strip()]
+        return scams
+
+    def is_kickoff(self, observations: List[Observation]) -> bool:
+        if self._kickoff:
+            return self._kickoff
+        for o in observations:
+            if isinstance(o, MessageObservation):
+                if o.text.strip() in self._scams:
+                    self._kickoff = True
+                    break
+        return self._kickoff
+
+    def react(self, observations: List[Observation], old_extractions: Extractions) -> Tuple[List[str], Extractions]:
         """"Picks zero or more appropriate actions to take, given the input and current state of the conversation.
 
         Note that the actions are only selected by the Puppeteer, but no actions are actually performed. It is the
@@ -251,53 +266,88 @@ class Puppeteer:
               in this method call.
         """
         self._log.clear()
+
+        if self.is_kickoff(observations) == False:
+            print("Puppeteer: waiting to be kicked off ...")
+            return ([], Extractions())
+
         self._log.begin("Inputs")
         self._log.begin("Observations")
         for o in observations:
             self._log.add(str(o))
         user_text = ' '.join([o.text.strip() for o in observations if isinstance(o, MessageObservation)])
+
         if self._enable_neural_dialog:
-            self._neural_dialog_engine.append_chat_history(user_text)
+            self._neural_dialog_engine.append_chat_history(user_text, "attacker")
         self._log.end()
-        self._log.begin("Extractions")
+        self._log.begin("Old Extractions")
         for name in old_extractions.names:
             self._log.add(f"{name}: '{old_extractions.extraction(name)}'")
         self._log.end()
+
+        new_extractions = extractor.get_extractions(user_text)
+        self._log.begin("New Extractions")
+        for name in new_extractions.names:
+            self._log.add(f"{name}: '{new_extractions.extraction(name)}'")
         self._log.end()
-        new_extractions = Extractions()
+        self._log.end()
+
+        """
+        if new extraction include information we are looking for in an agenda
+        that we have not kicked off => mark that agenda as finished
+        """
+        for name in new_extractions.names:
+            if name in self._policy._agendas and \
+                    name not in self._policy._active_agendas.keys() and \
+                        name not in self._policy._finished_agenda_names:
+                self._policy._finished_agenda_names.add(name)
+
         active_agendas = self._policy._active_agendas
+        finished_agenda_names = self._policy._finished_agenda_names
         self._log.begin("Update phase")
-        for agenda_state in self._agenda_states.values():
-            extractions = agenda_state.update(observations, old_extractions, active_agendas)
-            new_extractions.update(extractions)
+        for t in self._agenda_states:
+            if t in finished_agenda_names:
+                continue
+            _ = self._agenda_states[t].update(observations, new_extractions, active_agendas)
 
-        self._log.begin("Updating active agendas")
-        for agenda in self._agendas:
-            # Update the list of active agendas (if any agendas are kicked off)
-            # and increase times_made_current counter: number of times we use this agenda
-            agenda_state = self._agenda_states[agenda.name]
-            if agenda.name not in active_agendas and agenda.policy.can_kick_off(agenda_state):
-                self._log.add("{} is added to the list of active agendas".format(agenda.name))
-                active_agendas[agenda.name] = agenda
-                self._policy._times_made_current[agenda.name] += 1
-        self._log.end()
 
-        if self._plot_state:
-            # If plot_state is enabled
-            for agenda_state in self._agenda_states.values():
-                agenda_state.plot()
+        """
+        we will not ask for the information we already have
+        """
+        omit_keywords = set()
+        seen_extraction_name = list(set(old_extractions.names + new_extractions.names))
+        for name in seen_extraction_name:
+            if name in victim_keywords:
+                for word in victim_keywords[name]:
+                    omit_keywords.add(word)
+        omit_keywords = list(omit_keywords)
+        print("omit_keywords", omit_keywords)
 
-        self._log.end()
         self._log.begin("Act phase")
-        actions, action_extractions = self._policy.act(self._agenda_states, new_extractions)
-        new_extractions.update(action_extractions)
+        actions = self._policy.act(self._agenda_states, omit_keywords)
+
+        """
+        check if this is not a first turn,
+        and there is no action to perform,
+        and there is some agendas we have not kicked off
+        """
+        remaining_agenda_names = list(self._agendas.keys() - active_agendas.keys() - finished_agenda_names - {"react"})
+        if len(remaining_agenda_names) > 0 and \
+                len(self._policy._action_history) > 0 and len(actions) == 0:
+            chosen_agenda_name = random.choice(remaining_agenda_names)
+            intent_observation = IntentObservation()
+            intent_observation.add_intent(chosen_agenda_name)
+            _ = self._agenda_states[chosen_agenda_name].update([intent_observation], new_extractions, active_agendas)
+            actions = self._policy.act(self._agenda_states, omit_keywords)
+            
         self._log.end()
+
         self._log.begin("Outputs")
         self._log.begin("Actions")
 
         ### if neural dialog engine is enabled
         if self._enable_neural_dialog:
-            bot_text = ' '.join([a.text.strip() for a in actions])
+            bot_text = ' '.join([a.strip() for a in actions])
             ### debug ###
             #print("chat_hist: {}".format(self._neural_dialog_engine._chat_history))
             #print("chat_hist_ids: {}".format(self._neural_dialog_engine._chat_history_ids))
@@ -305,18 +355,18 @@ class Puppeteer:
             ### end ###
             if bot_text.strip():
                 # we got some action texts from agendas => appending them to neural bot's chat history
-                self._neural_dialog_engine.append_chat_history(bot_text)
+                self._neural_dialog_engine.append_chat_history(bot_text.strip(), "victim")
             else:
                 # we got nothing => turn to neural bot, generate a response
                 neural_text = self._neural_dialog_engine.generate_response()
-                actions = [Action(name="neural_response", text=neural_text)]
+                actions = [neural_text]
 
         for a in actions:
             self._log.add(str(a))
-        self._log.end()
-        self._log.begin("Extractions")
-        for name in new_extractions.names:
-            self._log.add(f"{name}: '{new_extractions.extraction(name)}'")
+
+        ### record past actions ###
+        self._policy._action_history.extend(actions)
+
         self._log.end()
         self._log.end()
 
@@ -328,26 +378,8 @@ class Puppeteer:
         for agenda in self._agenda_states:
             # don't forget to reset the policy
             self._policy = DefaultPuppeteerPolicy(self._agendas)
-            self._agenda_states[agenda].reset()
+            self._agenda_states[agenda].reset("main")
 
         if enable_neural_dialog:
             self._neural_dialog_engine.reset()
 
-    def get_active_agenda_names(self) -> List[str]:
-        """ Returns the active agenda names (the ones already kicked off).
-        """
-        return list(self._policy._active_agendas.keys())
-
-    def get_active_states(self, active_agenda_names) -> Dict[str, tuple[str, float, str]]:
-        """ Given the active agenda names, returns the most likely current state with it probability 
-            and turns_without_progress (number of consecutive turns the agenda has been idle) for each agenda name.
-        """
-        active_states = {}
-        for agenda_name in active_agenda_names:
-            current_state_probability_map = self._agenda_states[agenda_name]._state_probabilities._probabilities
-            current_state_name = max(current_state_probability_map, key=lambda x: current_state_probability_map[x])
-            turns_without_progress = self._policy._turns_without_progress[agenda_name]
-            turns_without_progress = str(turns_without_progress) if turns_without_progress != -1 else "NA"
-            active_states[agenda_name] = (current_state_name, current_state_probability_map[current_state_name], turns_without_progress)
-
-        return active_states
