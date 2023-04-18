@@ -1,7 +1,16 @@
 import openai
 from typing import List, Tuple
 
-openai.api_key = "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"
+"""
+1) creata an empty api.txt
+2) copy your openai api
+3) paste it in api.txt
+"""
+path = "/nas/home/pcharnset/irc-user-study/puppeteer/api.txt" # absolute path to api.txt
+with open(path) as file:
+    api_key = file.read().strip()
+
+openai.api_key = api_key
 model_engine = "gpt-3.5-turbo"
 
 persona = "You are a victim of scam."
